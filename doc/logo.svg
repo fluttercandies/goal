@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- goal — AI-first goal ledger: a ticket checked off, flat, no gradient -->
+  <rect width="1024" height="1024" rx="224" fill="#0F172A"/>
+  <rect x="262" y="262" width="500" height="500" rx="112"
+        fill="none" stroke="#F8FAFC" stroke-width="72"/>
+  <path d="M368 534 L470 636 L660 420"
+        fill="none" stroke="#4ADE80" stroke-width="88"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

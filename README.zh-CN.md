@@ -1,3 +1,5 @@
+<p align="center"><img src="doc/logo.png" width="160" alt="goal logo"></p>
+
 # goal
 
 在命令行里追踪目标与任务。为 AI agent 打造，也适合与 agent 协作的你。

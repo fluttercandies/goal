@@ -1,3 +1,5 @@
+<p align="center"><img src="doc/logo.png" width="160" alt="goal logo"></p>
+
 # goal
 
 Track goals and tasks from the command line. Built for AI agents, and for
