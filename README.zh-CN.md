@@ -6,6 +6,13 @@
 
 [English](README.md) | 简体中文
 
+<p align="center">
+<a href="https://pub.dev/packages/goal"><img src="https://img.shields.io/pub/v/goal.svg" alt="pub version"></a>
+<a href="https://pub.dev/packages/goal/score"><img src="https://img.shields.io/pub/points/goal.svg" alt="pub points"></a>
+<a href="https://github.com/fluttercandies/goal/actions"><img src="https://img.shields.io/github/actions/workflow/status/fluttercandies/goal/ci.yml?branch=main" alt="ci"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+</p>
+
 ## 安装
 
 ```bash
