@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+.idea/
+pubspec.lock
+
+# local ledgers created by tests or dogfooding
+.goal/
