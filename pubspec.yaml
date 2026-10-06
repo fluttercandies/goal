@@ -1,6 +1,6 @@
 name: goal
 description: AI-first goal ledger CLI. A tiny, idempotent, type-safe goal tracker for AI agents and humans.
-version: 1.0.1
+version: 1.1.0
 repository: https://github.com/fluttercandies/goal
 issue_tracker: https://github.com/fluttercandies/goal/issues
 topics:

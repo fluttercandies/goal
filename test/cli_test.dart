@@ -537,7 +537,7 @@ void main() {
       await run(['set', '1', 'wip', '-m', 'step one\nstep two']);
       await run(['show', '1']);
       final i = out.indexWhere((l) => l.contains('step one'));
-      expect(out[i], '    [10-06 12:00] step one');
+      expect(out[i], '    [2026-10-06 12:00:00] step one');
       // continuation aligns under the first character of the note text
       final pad = ' ' * out[i].indexOf('step one');
       expect(out[i + 1], '${pad}step two');

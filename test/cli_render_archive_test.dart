@@ -54,20 +54,38 @@ void main() {
       final code = await run(['render']);
       expect(code, 0);
       final text = out.join('\n');
-      expect(text, startsWith('# Goals — rendered 2026-10-06 12:00:00'));
+      expect(text, startsWith('# goal ledger — 2026-10-06 12:00:00'));
+      // status dashboard right under the header
+      expect(
+          text, contains('| wip | todo | blocked | failed | parked | done |'));
+      expect(text, contains('| 1 | 1 | 0 | 0 | 1 | 0 |'));
       expect(text, contains('## 🚧 wip (1)'));
       expect(text, contains('## ⬜ todo (1)'));
       expect(text, contains('## 📦 parked (1)'));
-      expect(text, contains('- **#1** [P1] 修复 A — agent_k, 0s'));
-      expect(text, contains('[${stamp(now)}] 进行中'));
+      expect(
+        text,
+        contains('- **#1** `P1` `R798` 修复 A — agent_k · 0s'),
+      );
+      expect(text, contains('[${fullStamp(now)}] 进行中'));
       expect(text, contains('回访条件：下次触面批'));
+    });
+
+    test('parked renders as an aligned index table', () async {
+      await seed();
+      expect(await run(['render']), 0);
+      final text = out.join('\n');
+      expect(text, contains('| id | pri | round | title | age | last note |'));
+      expect(
+        text,
+        contains('| #3 | - | R798 | 携带 | 0s | 回访条件：下次触面批 |'),
+      );
     });
 
     test('empty ledger renders just the header', () async {
       await run(['init']);
       out.clear();
       expect(await run(['render']), 0);
-      expect(out.join('\n'), startsWith('# Goals — rendered'));
+      expect(out.join('\n'), startsWith('# goal ledger —'));
       expect(out.length, 1);
     });
 
@@ -230,11 +248,31 @@ void main() {
       final lines = out.join('\n').split('\n');
       expect(lines, contains('- **#1** title line1'));
       // a title line that looks like a bullet is indented into the item,
-      // never promoted to a top-level bullet of its own
-      expect(lines, contains('  - forged item'));
+      // never promoted to a top-level bullet of its own (the age tail rides
+      // on the last title line)
+      expect(lines, contains('  - forged item · 0s'));
       final noteLine = lines.firstWhere((l) => l.contains('note line1'));
       expect(noteLine.startsWith('  - ['), isTrue);
       expect(lines, contains('    note line2'));
+    });
+
+    test('deps and detail render in the active groups', () async {
+      await run(['init']);
+      await run(['add', 'a']);
+      await run(['add', 'b', '--deps', '1', '-m', 'body line']);
+      expect(await run(['render']), 0);
+      final text = out.join('\n');
+      expect(text, contains('· deps 1'));
+      expect(text, contains('  > body line'));
+    });
+
+    test('pipes in parked content are escaped inside the table', () async {
+      await run(['init']);
+      await run(['add', 'a|b']);
+      await run(['set', '1', 'parked', '-m', 'x|y']);
+      expect(await run(['render']), 0);
+      final text = out.join('\n');
+      expect(text, contains(r'| #1 | - |  | a\|b | 0s | x\|y |'));
     });
 
     test('json render preserves multiline fields verbatim', () async {

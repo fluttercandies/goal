@@ -493,11 +493,11 @@ Future<int> _show(
     }
   }
   out('  notes:');
-  // Continuation lines align under the text, after '    [MM-DD HH:mm] '.
+  // Continuation lines align under the text, after '    [YYYY-MM-DD HH:mm:ss] '.
   for (final n in e.notes) {
     final lines = textLines(n.text);
-    out('    [${stamp(n.at)}] ${lines.first}');
-    final pad = ' ' * ('    ['.length + stamp(n.at).length + '] '.length);
+    out('    [${fullStamp(n.at)}] ${lines.first}');
+    final pad = ' ' * ('    ['.length + fullStamp(n.at).length + '] '.length);
     for (final line in lines.skip(1)) {
       out('$pad$line');
     }
@@ -548,32 +548,79 @@ Map<String, Object?> _entryJson(GoalEntry e) => {
       'updatedAt': e.updatedAt.toIso8601String(),
     };
 
+/// Escapes content for a markdown table cell (pipes would end the cell).
+String _mdCell(String s) => s.replaceAll('|', '\\|');
+
+int _byPriorityThenAge(GoalEntry a, GoalEntry b) {
+  final p = (a.priority?.rank ?? 9).compareTo(b.priority?.rank ?? 9);
+  return p != 0 ? p : a.updatedAt.compareTo(b.updatedAt);
+}
+
 String _markdown(GoalStore store, DateTime now) {
-  final buf = StringBuffer('# Goals — rendered ${fullStamp(now)}');
+  final counts = store.statusCounts();
+  final buf = StringBuffer('# goal ledger — ${fullStamp(now)}');
+  buf.writeln();
+  buf.writeln();
+  buf.writeln('| wip | todo | blocked | failed | parked | done |');
+  buf.writeln('| --: | --: | --: | --: | --: | --: |');
+  buf.writeln('| ${counts[GoalStatus.wip]} | ${counts[GoalStatus.todo]}'
+      ' | ${counts[GoalStatus.blocked]} | ${counts[GoalStatus.failed]}'
+      ' | ${counts[GoalStatus.parked]} | ${counts[GoalStatus.done]} |');
+
+  // Active groups: rich bullets — badges, lane owner, age, deps, detail and
+  // timestamped notes all belong to the ticket they describe.
   for (final s in [
     GoalStatus.wip,
     GoalStatus.todo,
     GoalStatus.blocked,
-    GoalStatus.failed,
-    GoalStatus.parked
+    GoalStatus.failed
   ]) {
     final group = store.all.where((e) => e.status == s).toList()
-      ..sort(
-          (a, b) => (a.priority?.rank ?? 9).compareTo(b.priority?.rank ?? 9));
+      ..sort(_byPriorityThenAge);
     if (group.isEmpty) continue;
     buf.writeln('\n## ${s.emoji} ${s.name} (${group.length})');
     for (final e in group) {
-      final pri = e.priority == null ? '' : ' [${e.priority}]';
-      final agent = e.agent == null
-          ? ''
-          : ' — ${oneline(e.agent!)}, ${age(e.updatedAt, now)}';
+      final badges = [
+        if (e.priority != null) '${e.priority}',
+        if (e.round.isNotEmpty) oneline(e.round),
+      ].map((b) => '`$b`').join(' ');
+      final lead = badges.isEmpty ? '' : '$badges ';
+      final tail = e.agent == null
+          ? ' · ${age(e.updatedAt, now)}'
+          : ' — ${trunc(oneline(e.agent!), 12)} · ${age(e.updatedAt, now)}';
+      final deps =
+          e.deps.isEmpty ? '' : ' · deps ${e.deps.map(oneline).join(',')}';
       // Continuation lines are indented into the bullet, so a multiline
       // title can never forge a new top-level item or heading.
       final title = textLines(e.title).join('\n  ');
-      buf.writeln('- **#${e.id}**$pri $title$agent');
-      for (final n in e.notes) {
-        buf.writeln('  - [${stamp(n.at)}] ${textLines(n.text).join('\n    ')}');
+      buf.writeln('- **#${e.id}** $lead$title$tail$deps');
+      if (e.detail.isNotEmpty) {
+        for (final line in textLines(e.detail)) {
+          buf.writeln('  > $line');
+        }
       }
+      for (final n in e.notes) {
+        buf.writeln(
+            '  - [${fullStamp(n.at)}] ${textLines(n.text).join('\n    ')}');
+      }
+    }
+  }
+
+  // Parked is a carry pile, not activity: an aligned index table keeps it
+  // scannable; the last note (usually the revisit condition) is summarized.
+  final parked = store.all.where((e) => e.status == GoalStatus.parked).toList()
+    ..sort(_byPriorityThenAge);
+  if (parked.isNotEmpty) {
+    buf.writeln('\n## ${GoalStatus.parked.emoji} '
+        '${GoalStatus.parked.name} (${parked.length})');
+    buf.writeln();
+    buf.writeln('| id | pri | round | title | age | last note |');
+    buf.writeln('| --: | :-: | :-: | -- | --: | -- |');
+    for (final e in parked) {
+      final last = e.notes.isEmpty ? '' : trunc(oneline(e.notes.last.text), 60);
+      buf.writeln('| #${_mdCell(oneline(e.id))} | ${e.priority ?? '-'}'
+          ' | ${_mdCell(oneline(e.round))} | ${_mdCell(oneline(e.title))}'
+          ' | ${age(e.updatedAt, now)} | ${_mdCell(last)} |');
     }
   }
   return buf.toString();

@@ -2,6 +2,16 @@
 
 All notable changes to this package are documented in this file.
 
+## 1.1.0 - 2026-10-06
+
+- `render` redesigned: a status dashboard table up top, `` `P1` ``/`` `R798` ``
+  badges, deps and detail in the active groups, and a compact aligned index
+  table for the parked group (pipes in content are escaped so the table
+  survives any input).
+- Note timestamps now carry the year and seconds (`[2026-10-06 13:48:44]`)
+  in both `render` and `show`.
+- Within a group, tickets of equal priority are ordered oldest-stuck first.
+
 ## 1.0.1 - 2026-10-06
 
 - Regenerated `doc/logo.png` with a transparent background: the previous
