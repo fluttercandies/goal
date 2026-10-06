@@ -13,6 +13,7 @@ environment:
   sdk: ^3.4.0
 
 dependencies:
+  characters: ^1.4.1
   hive_ce: ^2.19.3
 
 dev_dependencies:

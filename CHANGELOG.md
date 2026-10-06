@@ -34,6 +34,18 @@ All notable changes to this package are documented in this file.
 - `render` lists not-yet-archived done tickets in an index table (same shape
   as parked); previously they existed only as a dashboard count.
 - `-h` works as the first argument, like `--help`.
+- Display truncation is grapheme-cluster safe (via `package:characters`): an
+  emoji ZWJ sequence or an Arabic harakat is never cut from its base letter.
+- Unicode line/paragraph separators (U+2028/U+2029/U+0085) count as line
+  breaks in `show`/`render` and collapse to spaces in receipts and table
+  rows, so a "single-line" projection can no longer hide a line break.
+- `--deps`/`--id` split on full-width and ideographic separators (`，` `、`
+  `；` and Unicode whitespace), not just the ASCII comma.
+- Non-UTF-8 piped stdin fails with an actionable message instead of an
+  opaque decoder error.
+- `--agent ''` releases the lane (agent cleared) instead of storing an
+  empty owner; the receipt prints `agent=-`.
+- `add` receipts include `+deps=…` when dependencies were set.
 
 ## 1.0.1 - 2026-10-06
 

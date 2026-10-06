@@ -721,4 +721,153 @@ void main() {
       expect(out.join('\n'), isNot(contains('## ✅ done')));
     });
   });
+
+  group('unicode, RTL and grapheme edges', () {
+    test('Arabic, Hebrew and Persian content round-trips verbatim', () async {
+      await run(['init']);
+      const arabic = 'إصلاح تسجيل الدخول على iOS';
+      expect(await run(['add', arabic, '-p1']), 0);
+      expect(out.single, 'ok #1 created (todo) $arabic');
+      await run(['show', '1']);
+      expect(out.join('\n'), contains('  $arabic'));
+      // substring filter matches the raw stored title
+      await run(['list', 'تسجيل']);
+      expect(out.first, contains(arabic));
+      await run(['render']);
+      expect(out.join('\n'), contains('**#1** `P1` $arabic'));
+
+      await run(['set', '1', 'wip', '-m', 'בדיקה: הכל עובד']);
+      expect(out.single, contains('בדיקה: הכל עובד'));
+      await run(['show', '1']);
+      expect(out.join('\n'),
+          contains('    [2026-10-06 12:00:00] בדיקה: הכל עובד'));
+
+      // Persian zero-width non-joiner stays in storage untouched
+      const persian = 'نیم\u200Cفاصله';
+      await run(['add', persian]);
+      await run(['show', '2']);
+      expect(out.join('\n'), contains('  $persian'));
+    });
+
+    test('U+2028/U+2029 count as line breaks in views, spaces in rows',
+        () async {
+      await run(['init']);
+      await run(['add', 'one\u2028two\u2029three']);
+      await run(['show', '1']);
+      expect(out, contains('  one'));
+      expect(out, contains('  two'));
+      expect(out, contains('  three'));
+      // receipts and list rows stay structurally single-line
+      await run(['list']);
+      expect(out.first, contains('one two three'));
+      expect(out.first, isNot(contains('\u2028')));
+      // render indents every line into the bullet
+      await run(['render']);
+      final text = out.join('\n');
+      expect(text, contains('one\n  two\n  three'));
+    });
+
+    test('truncation never splits a grapheme cluster', () async {
+      await run(['init']);
+      const family = '👨‍👩‍👧‍👦'; // 7 runes, 1 grapheme
+      final longNote = '${'a' * 39}$family tail';
+      await run(['add', 't']);
+      await run(['set', '1', '-m', longNote]);
+      expect(out.single, contains('note="'));
+      expect(out.single, contains(family));
+      expect(out.single, isNot(contains('tail')));
+
+      // base letter + harakat pairs: the cut lands on whole pairs only
+      const pair = '\u0628\u064E'; // beh + fatha = 1 grapheme, 2 runes
+      final arabicTitle = 'X' * 38 + pair * 10;
+      await run(['set', '1', '--title', arabicTitle]);
+      // 38 X + 2 pairs = 40 graphemes = 42 runes: rune-cut would split here
+      expect(out.single, contains('"${'X' * 38}$pair$pair"'));
+
+      // listLine caps at 60 graphemes, clusters intact
+      await run(['set', '1', '--title', family * 100]);
+      await run(['list']);
+      expect(out.first.endsWith(family * 60), isTrue);
+    });
+
+    test('full-width and ideographic separators parse in deps and id lists',
+        () async {
+      await run(['init']);
+      await run(['add', 'a']);
+      await run(['add', 'b']);
+      expect(await run(['add', 'multi', '--deps', '1，2、']), 0);
+      expect(out.single, 'ok #3 created (todo) +deps=1,2 multi');
+      expect(out, isNot(contains(contains('unknown deps'))));
+      await run(['list', '--id', '1　3']); // ideographic space too
+      expect(out.length, 3); // rows for #1 and #3 + footer
+      await run(['show', '3']);
+      expect(out.join('\n'), contains('deps: 1 (todo), 2 (todo)'));
+    });
+
+    test('malformed piped stdin fails with a UTF-8 tutorial', () async {
+      await run(['init']);
+      await run(['add', 't']);
+      expect(
+        await run(
+          ['set', '1', '-m', '-'],
+          stdin: () async =>
+              throw const FormatException('Missing extension byte'),
+        ),
+        2,
+      );
+      expect(err.single, contains('not valid UTF-8'));
+      expect(err.single, contains('re-send'));
+    });
+
+    test('blank --agent releases the lane instead of storing an empty owner',
+        () async {
+      await run(['init']);
+      await run(['add', 't']);
+      await run(['set', '1', 'wip', '--agent', 'agent_x']);
+      expect(await run(['set', '1', '--agent', '']), 0);
+      expect(out.single, 'ok 1 updated +agent=-');
+      await run(['show', '1']);
+      expect(out.join('\n'), contains('  agent: -'));
+    });
+
+    test('equals-form valued flags parse', () async {
+      await run(['init']);
+      await run(['add', 't']);
+      await run(['add', 'u']);
+      expect(await run(['set', '1', '--title=fixed']), 0);
+      expect(out.single, 'ok 1 updated +title="fixed"');
+      expect(await run(['set', '1', '--deps=2']), 0);
+      expect(out.single, 'ok 1 updated +deps=2');
+    });
+
+    test('dash-leading titles survive via --', () async {
+      await run(['init']);
+      expect(await run(['add', '--', '-p1 not a flag']), 0);
+      // everything after -- is positional, joined into one verbatim title
+      expect(out.single, 'ok #1 created (todo) -p1 not a flag');
+      await run(['show', '1']);
+      expect(out.join('\n'), contains('  -p1 not a flag'));
+    });
+
+    test('empty ledger renders a zeroed dashboard only', () async {
+      await run(['init']);
+      expect(await run(['render']), 0);
+      final text = out.join('\n');
+      expect(text, contains('| 0 | 0 | 0 | 0 | 0 | 0 |'));
+      expect(text, isNot(contains('## ')));
+    });
+
+    test('very long CJK title: capped in list, full in show and json',
+        () async {
+      await run(['init']);
+      final long = '很长' * 200; // 400 graphemes
+      await run(['add', long]);
+      await run(['list']);
+      expect(out.first, isNot(contains(long)));
+      await run(['show', '1']);
+      expect(out.join('\n'), contains(long));
+      await run(['render', '--json']);
+      expect(out.join('\n'), contains(long));
+    });
+  });
 }

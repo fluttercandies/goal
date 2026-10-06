@@ -71,6 +71,9 @@ $ goal set 3 done "files: a.dart, b.dart; verify: dart test; evidence: docs/3.pn
 
 多行和特殊字符随处可用：标题、正文、备注全部原样存储——`show` 就是原样
 视图——而回执、`list` 与 `render` 始终输出结构安全的单行内容。
+截断按字素簇进行，RTL 文字（阿拉伯语、希伯来语、波斯语）与组合 emoji
+原样往返，不会把字母和它的发音符号、emoji 和连接符切断；Unicode 行
+分隔符（U+2028）在视图里按换行处理，绝不会漏进单行回执。
 `goal add` 后面的裸词会自动拼成一个标题，忘加引号也能一次成功；回执会写明
 每个字段的新值（`+agent=… +deps=1,2 +note="…"`），无需再跑一次 `show` 核对。
 

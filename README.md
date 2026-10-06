@@ -73,7 +73,11 @@ reads the note from stdin.
 
 Multiline and special characters are welcome everywhere: titles, details and
 notes are stored verbatim — `show` is the verbatim view — while receipts,
-`list` and `render` always print structurally safe single-line entries. Bare
+`list` and `render` always print structurally safe single-line entries.
+Truncation is grapheme-cluster safe, so RTL scripts (Arabic, Hebrew, Persian)
+and composed emoji round-trip without a cut splitting a letter from its
+harakat or an emoji from its joiners; Unicode line separators (U+2028) are
+treated as line breaks in views and never leak into receipts. Bare
 words after `goal add` join into one title, so an unquoted title still
 succeeds on the first try, and every receipt states the new values
 (`+agent=… +deps=1,2 +note="…"`) so no follow-up `show` is needed.

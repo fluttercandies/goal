@@ -2,6 +2,8 @@
 /// break on double-width glyphs.
 library;
 
+import 'package:characters/characters.dart';
+
 import '../models/goal_entry.dart';
 import '../models/goal_status.dart';
 
@@ -22,17 +24,23 @@ String age(DateTime at, DateTime now) {
   return '${d.inDays}d';
 }
 
-/// Truncates by runes so a cut never splits a surrogate pair (an emoji cut
-/// in half renders as garbage everywhere).
+/// Truncates by grapheme clusters (user-perceived characters) so a cut never
+/// splits a surrogate pair, an emoji ZWJ sequence, or an Arabic harakat from
+/// its base letter — any of which would render as garbage everywhere.
 String trunc(String s, int n) {
-  if (s.runes.length <= n) return s;
-  return String.fromCharCodes(s.runes.take(n));
+  final clusters = s.characters;
+  if (clusters.length <= n) return s;
+  return clusters.take(n).toString();
 }
 
 String cell(String s, int width) => trunc(s, width).padRight(width);
 
 final _ansiRe = RegExp('\x1B\\[[0-9;:?]*[ -/]*[@-~]');
-final _ctrlRe = RegExp('[\x00-\x1F\x7F\x80-\x9F]');
+// Control characters become one space in display projections. U+2028/U+2029
+// (Unicode line/paragraph separator) are included: many terminals render
+// them as line breaks, so they must never survive into a "single-line"
+// receipt or table row.
+final _ctrlRe = RegExp('[\x00-\x1F\x7F\x80-\x9F\u2028\u2029]');
 
 /// Single-line projection of arbitrary user text for receipts, table rows
 /// and filters: ANSI escapes are removed, every other control character
@@ -44,8 +52,10 @@ String oneline(String s) => s
     .replaceAll(RegExp(r'  +'), ' ')
     .trim();
 
-/// Splits verbatim text into display lines, tolerating CRLF and lone CR.
-List<String> textLines(String s) => s.split(RegExp(r'\r\n|\r|\n'));
+/// Splits verbatim text into display lines, tolerating CRLF, lone CR and the
+/// Unicode line/paragraph separators (U+2028/U+2029/U+0085).
+List<String> textLines(String s) =>
+    s.split(RegExp(r'\r\n|\r|\n|\u2028|\u2029|\u0085'));
 
 String stamp(DateTime t) {
   String two(int v) => v.toString().padLeft(2, '0');

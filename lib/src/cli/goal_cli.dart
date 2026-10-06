@@ -82,7 +82,9 @@ ParsedArgs parseArgs(List<String> args) {
 }
 
 List<String> splitIds(String raw) => raw
-    .split(',')
+    // ASCII, full-width and ideographic separators, plus whitespace — a
+    // pasted `1，2` or `1 2` must parse, not warn as one unknown dep.
+    .split(RegExp(r'[,，、;；\s]+'))
     .map(bareId)
     .where((s) => s.isNotEmpty)
     .toSet() // first occurrence wins; '2,2' must not show dep 2 twice
@@ -132,6 +134,12 @@ Future<int> runGoalCli(
   } on GoalError catch (e) {
     err('goal: ${e.message}');
     return e.code == GoalErrorCode.conflict ? 4 : 2;
+  } on FormatException catch (e) {
+    // Piped stdin must be UTF-8; without this branch a stray invalid byte
+    // surfaces as an opaque decoder error instead of an actionable one.
+    err('goal: piped input is not valid UTF-8 (${e.message.trim()}). '
+        're-send the text encoded as UTF-8');
+    return 2;
   } catch (e) {
     // Unexpected failures (io, decoding) must still honor the 0/2/4 contract.
     err('goal: $e');
@@ -303,7 +311,8 @@ Future<int> _add(
     now: now,
   );
   out('ok #${entry.id} created (todo)'
-      '${entry.round.isEmpty ? '' : ' round=${oneline(entry.round)}'} '
+      '${entry.round.isEmpty ? '' : ' round=${oneline(entry.round)}'}'
+      '${depIds.isEmpty ? '' : ' +deps=${depIds.join(',')}'} '
       '${oneline(entry.title)}');
   return 0;
 }
@@ -362,8 +371,14 @@ Future<int> _set(
   }
   final agent = p.options['agent'];
   if (agent != null) {
-    next = next.copyWith(agent: agent, updatedAt: now);
-    changes['agent'] = agent;
+    // `--agent ''` releases the lane instead of storing an empty owner.
+    final blank = oneline(agent).isEmpty;
+    next = next.copyWith(
+      agent: blank ? null : agent,
+      clearAgent: blank,
+      updatedAt: now,
+    );
+    changes['agent'] = blank ? null : agent;
   }
   final deps = p.options['deps'];
   var depIds = const <String>[];
@@ -409,7 +424,8 @@ Future<int> _set(
     if (changes.containsKey('title')) 'title=${_shown(newTitle)}',
     if (changes.containsKey('detail')) 'detail=${_shown(newDetail)}',
     if (note.isNotEmpty) 'note=${_shown(note)}',
-    if (changes.containsKey('agent')) 'agent=${oneline(agent!)}',
+    if (changes.containsKey('agent'))
+      'agent=${changes['agent'] == null ? '-' : oneline(agent!)}',
     if (changes.containsKey('deps')) 'deps=${depIds.join(',')}',
     if (changes.containsKey('round')) 'round=${oneline(round!)}',
     if (changes.containsKey('priority')) 'pri=${p.priority}',

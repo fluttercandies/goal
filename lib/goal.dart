@@ -8,6 +8,7 @@ export 'src/cli/format.dart'
         age,
         stamp,
         fullStamp,
+        bareId,
         listLine,
         footerCounts,
         statusViewOrder,

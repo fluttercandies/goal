@@ -55,6 +55,17 @@ void main() {
       expect(trunc(t, 60), t);
       expect(trunc('😀😀😀', 2), '😀😀');
     });
+
+    test('truncation never splits a grapheme cluster', () {
+      const family = '👨‍👩‍👧‍👦'; // 7 runes, 1 grapheme
+      expect(trunc('${'a' * 39}$family tail', 40), '${'a' * 39}$family');
+      // base + combining mark: rune cuts could orphan the harakat
+      const pair = '\u0628\u064E';
+      expect(trunc('X' * 38 + pair * 10, 40), 'X' * 38 + pair * 2);
+      // flag emoji = 2 runes, 1 grapheme
+      const flag = '🇸🇦';
+      expect(trunc(flag * 5, 3), '$flag$flag$flag');
+    });
   });
 
   group('oneline', () {
@@ -77,9 +88,18 @@ void main() {
       expect(oneline('a\x7Fb'), 'a b');
     });
 
+    test('Unicode line separators collapse to spaces', () {
+      expect(oneline('a\u2028b'), 'a b');
+      expect(oneline('a\u2029b'), 'a b');
+      expect(oneline('a\u0085b'), 'a b');
+    });
+
     test('clean text passes through unchanged', () {
       expect(oneline('Fix Scroll Overflow'), 'Fix Scroll Overflow');
       expect(oneline('修复滚动溢出'), '修复滚动溢出');
+      // RTL text and zero-width joiners are content, not structure
+      expect(oneline('إصلاح الدخول'), 'إصلاح الدخول');
+      expect(oneline('نیم\u200Cفاصله'), 'نیم\u200Cفاصله');
     });
   });
 
@@ -90,6 +110,12 @@ void main() {
       expect(textLines('a\rb'), ['a', 'b']);
       expect(textLines('single'), ['single']);
       expect(textLines(''), ['']);
+    });
+
+    test('splits on Unicode line and paragraph separators', () {
+      expect(textLines('a\u2028b'), ['a', 'b']);
+      expect(textLines('a\u2029b'), ['a', 'b']);
+      expect(textLines('a\u0085b'), ['a', 'b']);
     });
   });
 
