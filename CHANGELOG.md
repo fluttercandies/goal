@@ -2,6 +2,11 @@
 
 All notable changes to this package are documented in this file.
 
+## 1.0.1 - 2026-10-06
+
+- Regenerated `doc/logo.png` with a transparent background: the previous
+  rasterizer flattened the rounded corners to opaque white.
+
 ## 1.0.0 - 2026-10-06
 
 Initial stable release.
