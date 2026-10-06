@@ -451,7 +451,7 @@ void main() {
       await run(['init']);
       await run(['add', 't']);
       expect(await run(['set', '1', '-m', '   ']), 2);
-      expect(err.single, contains('note text is empty'));
+      expect(err.single, contains('-m value is empty'));
       expect(await run(['set', '1', '-m', '-'], stdin: () async => '  \n'), 2);
       expect(err.single, contains('read nothing from stdin'));
       expect(await run(['set', '1', '--round', ' ']), 2);
@@ -548,6 +548,107 @@ void main() {
       await run(['add', 'two\nwords']);
       expect(await run(['list', 'two words']), 0);
       expect(out.first, startsWith('1 '));
+    });
+  });
+
+  group('rm, corrections and archive visibility', () {
+    test('rm removes an active ticket and reports its title', () async {
+      await run(['init']);
+      await run(['add', 'obsolete']);
+      expect(await run(['rm', '1']), 0);
+      expect(out.single, 'ok rm #1 obsolete');
+      expect(await run(['show', '1']), 2);
+      expect(err.single, contains("no ticket '1'"));
+      await run(['list']);
+      expect(out.single, '-- 0 tickets');
+    });
+
+    test('rm rejects extra args and archived tickets', () async {
+      await run(['init']);
+      await run(['add', 'a']);
+      expect(await run(['rm', '1', '2']), 2);
+      expect(err.single, contains('one ticket at a time'));
+      await run(['set', '1', 'done']);
+      await run(['archive']);
+      expect(await run(['rm', '1']), 2);
+      expect(err.single, contains('read-only'));
+    });
+
+    test('ids of removed tickets are never reused', () async {
+      await run(['init']);
+      await run(['add', 'a']);
+      await run(['rm', '1']);
+      expect(await run(['add', 'b']), 0);
+      expect(out.single, startsWith('ok #2 created'));
+    });
+
+    test('--title and --detail correct a ticket with receipt values', () async {
+      await run(['init']);
+      await run(['add', 'wrong title', '-m', 'wrong body']);
+      expect(
+          await run(['set', '1', '--title', 'right title', '--detail', 'body']),
+          0);
+      expect(out.single, 'ok 1 updated +title="right title" +detail="body"');
+      await run(['show', '1']);
+      final text = out.join('\n');
+      expect(text, contains('  right title'));
+      expect(text, contains('    body'));
+      expect(text, isNot(contains('wrong')));
+    });
+
+    test('blank --title and empty stdin fail loudly', () async {
+      await run(['init']);
+      await run(['add', 't']);
+      expect(await run(['set', '1', '--title', ' ']), 2);
+      expect(err.single, contains('--title value is empty'));
+      expect(
+        await run(['set', '1', '--title', '-'], stdin: () async => '\n'),
+        2,
+      );
+      expect(err.single, contains('read nothing from stdin'));
+    });
+
+    test('show reads archived tickets, labeled read-only', () async {
+      await run(['init']);
+      await run(['add', 'finished work', '-p1', '--round', 'R798']);
+      await run(['set', '1', 'done']);
+      await run(['archive']);
+      expect(await run(['show', '1']), 0);
+      final text = out.join('\n');
+      expect(text, contains('#1 [archived] [done] [P1] [R798]'));
+      // archived stays read-only for writes
+      expect(await run(['set', '1', 'wip']), 2);
+      expect(err.single, contains('read-only'));
+    });
+
+    test('unknown deps warn at add and set time', () async {
+      await run(['init']);
+      await run(['add', 't', '--deps', '99']);
+      expect(out.first, startsWith('! unknown deps'));
+      expect(out.first, contains('99'));
+      expect(out.last, startsWith('ok #1 created'));
+      await run(['set', '1', '--deps', '88']);
+      expect(out.first, contains('88'));
+      expect(out.last, 'ok 1 updated +deps=88');
+    });
+
+    test('help works in flag position', () async {
+      expect(await run(['set', '--help']), 0);
+      expect(out.join('\n'), contains('goal set <id> [status]'));
+    });
+
+    test('audit journal failure degrades to a warning, never a false failure',
+        () async {
+      await run(['init']);
+      // block the journal by replacing its file with a directory
+      File('$home/events.jsonl').deleteSync();
+      Directory('$home/events.jsonl').createSync();
+      expect(await run(['add', 't']), 0);
+      expect(out.single, startsWith('ok #1 created'));
+      expect(err.single, contains('audit journal'));
+      // the data write itself succeeded
+      await run(['show', '1']);
+      expect(out.join('\n'), contains('  t'));
     });
   });
 }

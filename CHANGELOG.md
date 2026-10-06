@@ -11,6 +11,19 @@ All notable changes to this package are documented in this file.
 - Note timestamps now carry the year and seconds (`[2026-10-06 13:48:44]`)
   in both `render` and `show`.
 - Within a group, tickets of equal priority are ordered oldest-stuck first.
+- New `rm` command deletes a ticket (journaled; ids are never reused) for
+  genuine mis-files like duplicates or accidental adds.
+- `set --title` and `set --detail` correct a ticket's title/body after the
+  fact (`-` reads from stdin like `-m`); receipts report the new value.
+- Archived tickets are no longer invisible: `show <id>` resolves them with an
+  `[archived]` tag, and `render --json` includes an `archive` section, so a
+  history audit never needs a hive dump.
+- `--help`/`-h` now works in any argument position (`goal set --help`).
+- Unknown `--deps` ids warn immediately at `add`/`set` time — not only in
+  the next `ready` footer.
+- An audit-journal write failure degrades to a warning on stderr: the hive
+  ledger is authoritative, so a journal gap never fails (and never fakes a
+  failure for) an operation whose data write already succeeded.
 
 ## 1.0.1 - 2026-10-06
 

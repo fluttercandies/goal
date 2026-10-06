@@ -19,6 +19,9 @@ class GoalError implements Exception {
 
 enum GoalErrorCode { usage, notFound, conflict, busy }
 
+/// A ticket located anywhere in the ledger.
+typedef ArchivedRef = ({GoalEntry entry, bool archived});
+
 /// Hive-backed ledger: `goals` (active) + `archive` + `meta` boxes plus an
 /// append-only JSONL journal in the same directory.
 class GoalStore {
@@ -43,7 +46,12 @@ class GoalStore {
 
   /// Opens the ledger at [home]. When [create] is false and no ledger exists
   /// there, throws [GoalError] — never silently forks a new empty ledger.
-  static Future<GoalStore> open(String home, {bool create = false}) async {
+  /// [onJournalWarning] receives audit-journal write failures: the hive
+  /// state is authoritative, so a journal gap must degrade to a warning,
+  /// never fail an operation whose data write already succeeded.
+  static Future<GoalStore> open(String home,
+      {bool create = false,
+      void Function(String warning)? onJournalWarning}) async {
     final dir = Directory(home);
     final exists = existsAt(home);
     if (!exists && !create) {
@@ -98,7 +106,7 @@ class GoalStore {
       goals,
       archive,
       metaBox,
-      EventJournal(File('$home/events.jsonl')),
+      EventJournal(File('$home/events.jsonl'), onWarn: onJournalWarning),
     );
     if (create) await store.journal.append('init');
     return store;
@@ -144,6 +152,37 @@ class GoalStore {
       '${nearest.take(5).map((e) => e.id).join(' ')}',
       code: GoalErrorCode.notFound,
     );
+  }
+
+  /// Resolves a ticket anywhere in the ledger (active or archived) for
+  /// read-only views; archived entries carry [ArchivedRef.archived] so the
+  /// caller can label them.
+  ArchivedRef resolveAny(String input) {
+    final active = goals.get(input);
+    if (active != null) return (entry: active, archived: false);
+    final archived = archive.get(input);
+    if (archived != null) return (entry: archived, archived: true);
+    final nearest = all..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    throw GoalError(
+        "no ticket '$input'. recent ids: "
+        '${nearest.take(5).map((e) => e.id).join(' ')}',
+        code: GoalErrorCode.notFound);
+  }
+
+  /// Archived entries ordered by creation time — the read-only history.
+  List<GoalEntry> get archivedAll {
+    final list = archive.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return list;
+  }
+
+  /// Deletes an active ticket. Removal is journaled; archived tickets are
+  /// read-only and ids of removed tickets are never reused.
+  Future<GoalEntry> remove(String id) async {
+    final entry = resolve(id);
+    await goals.delete(entry.id);
+    await journal.append('rm', id: entry.id);
+    return entry;
   }
 
   /// Creates a ticket with the next auto-increment id.

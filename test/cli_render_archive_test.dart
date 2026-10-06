@@ -112,6 +112,20 @@ void main() {
       expect(first['agent'], 'agent_k');
       expect((first['notes'] as List).length, 1);
     });
+
+    test('--json backup includes archived tickets', () async {
+      await seed();
+      await run(['set', '2', 'done']);
+      await run(['archive']);
+      out.clear();
+      expect(await run(['render', '--json']), 0);
+      final data = jsonDecode(out.join('\n')) as Map<String, dynamic>;
+      expect((data['goals'] as List).length, 2);
+      final archive = data['archive'] as List;
+      expect(archive.length, 1);
+      expect((archive.single as Map<String, dynamic>)['id'], '2');
+      expect((archive.single as Map<String, dynamic>)['status'], 'done');
+    });
   });
 
   group('archive', () {
@@ -132,7 +146,12 @@ void main() {
       out.clear();
       expect(await run(['archive']), 0);
       expect(out.single, 'ok archived 1: 2');
-      expect(await run(['show', '2']), 2);
+      // archived tickets stay visible to read-only views, tagged as archived
+      out.clear();
+      expect(await run(['show', '2']), 0);
+      expect(out.join('\n'), contains('[archived]'));
+      // but remain immutable
+      expect(await run(['set', '2', 'wip']), 2);
       expect(err.single, contains('archived'));
       expect(await run(['archive']), 0);
       expect(out.single, 'nothing to archive.');

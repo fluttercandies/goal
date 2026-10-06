@@ -11,8 +11,8 @@ import 'format.dart';
 const statusWords = 'todo wip done blocked failed parked';
 
 const _flagHint =
-    'flags: -p0..-p3 -m <text|-> --deps <a,b> --round <R> --agent <id> '
-    '--id <id> -o <file> --json --dry-run';
+    'flags: -p0..-p3 -m <text|-> --title <text> --detail <text|-> '
+    '--deps <a,b> --round <R> --agent <id> -o <file> --json --dry-run';
 
 /// Parses argv into positionals, valued options, bool flags and `-pN`.
 class ParsedArgs {
@@ -31,7 +31,7 @@ ParsedArgs parseArgs(List<String> args) {
   final opts = <String, String>{};
   final bools = <String>{};
   GoalPriority? priority;
-  const valued = {'m', 'o', 'agent', 'deps', 'round', 'id'};
+  const valued = {'m', 'o', 'agent', 'deps', 'round', 'id', 'title', 'detail'};
 
   var i = 0;
   var flagsDone = false;
@@ -88,23 +88,29 @@ List<String> splitIds(String raw) => raw
     .toSet() // first occurrence wins; '2,2' must not show dep 2 twice
     .toList();
 
-Future<String> _noteText(
-    ParsedArgs p, Future<String> Function() readStdin) async {
-  final v = p.options['m'];
+/// Reads a valued text option (-m/--title/--detail): absent = '', '-' reads
+/// stdin, blank or control-only values fail loudly with the flag's name so
+/// the caller can retry once with real content.
+Future<String> _optionText(ParsedArgs p, String key, String label,
+    Future<String> Function() readStdin) async {
+  final v = p.options[key];
   if (v == null) return '';
   if (v == '-') {
     final s = (await readStdin()).trim();
     if (s.isEmpty) {
-      throw GoalError('-m - read nothing from stdin. pipe the note in, '
-          'e.g. echo "text" | goal set <id> -m -');
+      throw GoalError('$label - read nothing from stdin. pipe the text in, '
+          'e.g. echo "text" | goal set <id> $label -');
     }
     return s;
   }
-  if (v.trim().isEmpty) {
-    throw GoalError('-m note text is empty. pass text, or - to read stdin');
+  if (oneline(v).isEmpty) {
+    throw GoalError('$label value is empty. pass text, or - to read stdin');
   }
   return v;
 }
+
+Future<String> _noteText(ParsedArgs p, Future<String> Function() readStdin) =>
+    _optionText(p, 'm', '-m', readStdin);
 
 /// Runs the CLI and returns the process exit code.
 /// [writeln], [clock] and [stdinReader] are injection points for tests.
@@ -117,12 +123,12 @@ Future<int> runGoalCli(
   Future<String> Function()? stdinReader,
 }) async {
   final out = writeln ?? print;
-  final err = errln ?? stderr.writeln;
+  final void Function(String) err = errln ?? stderr.writeln;
   final now = clock ?? DateTime.now;
   final readStdin = stdinReader ?? () => stdin.transform(utf8.decoder).join();
   final ledger = home ?? Platform.environment['GOAL_HOME'] ?? '.goal';
   try {
-    return await _dispatch(args, ledger, out, now(), readStdin);
+    return await _dispatch(args, ledger, out, err, now(), readStdin);
   } on GoalError catch (e) {
     err('goal: ${e.message}');
     return e.code == GoalErrorCode.conflict ? 4 : 2;
@@ -138,12 +144,13 @@ Future<int> runGoalCli(
 const _commandFlags = <String, Set<String>>{
   'init': {},
   'add': {'p', 'm', 'round', 'deps'},
-  'set': {'p', 'm', 'round', 'deps', 'agent'},
+  'set': {'p', 'm', 'round', 'deps', 'agent', 'title', 'detail'},
   'list': {'p', 'round', 'id'},
   'ready': {},
   'show': {},
   'render': {'o', 'json'},
   'archive': {'dry-run'},
+  'rm': {},
 };
 
 String _flagName(String f) => switch (f) {
@@ -154,6 +161,8 @@ String _flagName(String f) => switch (f) {
       'deps' => '--deps <a,b>',
       'id' => '--id <id>',
       'agent' => '--agent <id>',
+      'title' => '--title <text|->',
+      'detail' => '--detail <text|->',
       _ => '--$f',
     };
 
@@ -176,10 +185,16 @@ Future<int> _dispatch(
   List<String> args,
   String home,
   void Function(String) out,
+  void Function(String) err,
   DateTime now,
   Future<String> Function() readStdin,
 ) async {
   if (args.isEmpty || args.first == 'help' || args.first == '--help') {
+    _help(out);
+    return 0;
+  }
+  // help works anywhere: `goal set --help` must teach, not fail.
+  if (args.skip(1).contains('--help') || args.skip(1).contains('-h')) {
     _help(out);
     return 0;
   }
@@ -189,21 +204,25 @@ Future<int> _dispatch(
   if (allowed != null) _checkFlags(cmd, parsed, allowed);
   switch (cmd) {
     case 'init':
-      return _init(home, out);
+      return _init(home, out, err);
     case 'add':
-      return _withStore(home, out, (s) => _add(s, parsed, out, now, readStdin));
+      return _withStore(
+          home, out, err, (s) => _add(s, parsed, out, now, readStdin));
     case 'set':
-      return _withStore(home, out, (s) => _set(s, parsed, out, now, readStdin));
+      return _withStore(
+          home, out, err, (s) => _set(s, parsed, out, now, readStdin));
     case 'list':
-      return _withStore(home, out, (s) => _list(s, parsed, out, now));
+      return _withStore(home, out, err, (s) => _list(s, parsed, out, now));
     case 'ready':
-      return _withStore(home, out, (s) => _ready(s, out, now));
+      return _withStore(home, out, err, (s) => _ready(s, out, now));
     case 'show':
-      return _withStore(home, out, (s) => _show(s, parsed, out, now));
+      return _withStore(home, out, err, (s) => _show(s, parsed, out, now));
     case 'render':
-      return _withStore(home, out, (s) => _render(s, parsed, out, now));
+      return _withStore(home, out, err, (s) => _render(s, parsed, out, now));
     case 'archive':
-      return _withStore(home, out, (s) => _archive(s, parsed, out));
+      return _withStore(home, out, err, (s) => _archive(s, parsed, out));
+    case 'rm':
+      return _withStore(home, out, err, (s) => _rm(s, parsed, out));
     default:
       out("unknown command '$cmd'");
       _help(out);
@@ -214,9 +233,11 @@ Future<int> _dispatch(
 Future<int> _withStore(
   String home,
   void Function(String) out,
+  void Function(String) err,
   Future<int> Function(GoalStore) body,
 ) async {
-  final store = await GoalStore.open(home);
+  final store = await GoalStore.open(home,
+      onJournalWarning: (String w) => err('goal: $w'));
   try {
     return await body(store);
   } finally {
@@ -224,8 +245,10 @@ Future<int> _withStore(
   }
 }
 
-Future<int> _init(String home, void Function(String) out) async {
-  final store = await GoalStore.open(home, create: true);
+Future<int> _init(
+    String home, void Function(String) out, void Function(String) err) async {
+  final store = await GoalStore.open(home,
+      create: true, onJournalWarning: (String w) => err('goal: $w'));
   await store.close();
   out('ok ledger at $home');
   return 0;
@@ -250,11 +273,15 @@ Future<int> _add(
   if (round != null && round.trim().isEmpty) {
     throw GoalError('--round value is empty. pass e.g. --round R12');
   }
+  final depIds = p.options['deps'] == null
+      ? const <String>[]
+      : splitIds(p.options['deps']!);
+  _warnUnknownDeps(store, depIds, out);
   final entry = await store.add(
     title: title,
     detail: await _noteText(p, readStdin),
     round: round ?? '',
-    deps: p.options['deps'] == null ? const [] : splitIds(p.options['deps']!),
+    deps: depIds,
     priority: p.priority,
     now: now,
   );
@@ -297,6 +324,8 @@ Future<int> _set(
   if (round != null && round.trim().isEmpty) {
     throw GoalError('--round value is empty. pass e.g. --round R12');
   }
+  final newTitle = await _optionText(p, 'title', '--title', readStdin);
+  final newDetail = await _optionText(p, 'detail', '--detail', readStdin);
   final changes = <String, Object?>{};
   var next = entry;
   if (status != null && status != entry.status) {
@@ -323,6 +352,7 @@ Future<int> _set(
   var depIds = const <String>[];
   if (deps != null) {
     depIds = splitIds(deps);
+    _warnUnknownDeps(store, depIds, out);
     next = next.copyWith(deps: depIds, updatedAt: now);
     changes['deps'] = depIds;
   }
@@ -333,6 +363,14 @@ Future<int> _set(
   if (p.priority != null) {
     next = next.copyWith(priority: p.priority, updatedAt: now);
     changes['priority'] = p.priority.toString();
+  }
+  if (newTitle.isNotEmpty) {
+    next = next.copyWith(title: newTitle, updatedAt: now);
+    changes['title'] = newTitle;
+  }
+  if (newDetail.isNotEmpty) {
+    next = next.copyWith(detail: newDetail, updatedAt: now);
+    changes['detail'] = newDetail;
   }
 
   if (identical(next, entry)) {
@@ -351,6 +389,8 @@ Future<int> _set(
   // The receipt states every changed field with its new value, so the caller
   // never needs a second command to verify what happened.
   final extras = <String>[
+    if (changes.containsKey('title')) 'title=${_shown(newTitle)}',
+    if (changes.containsKey('detail')) 'detail=${_shown(newDetail)}',
     if (note.isNotEmpty) 'note=${_shown(note)}',
     if (changes.containsKey('agent')) 'agent=${oneline(agent!)}',
     if (changes.containsKey('deps')) 'deps=${depIds.join(',')}',
@@ -360,6 +400,20 @@ Future<int> _set(
   out('ok ${entry.id} $head'
       "${extras.isEmpty ? '' : ' +${extras.join(' +')}'}");
   return 0;
+}
+
+/// Receipt-safe warning for deps pointing at ids that do not exist: the
+/// store treats them as satisfied, but a typo surfaces here, immediately,
+/// not at the next `ready`.
+void _warnUnknownDeps(
+    GoalStore store, List<String> ids, void Function(String) out) {
+  final unknown = ids
+      .where((d) => store.get(d) == null && !store.isArchived(d))
+      .map(oneline)
+      .toList();
+  if (unknown.isNotEmpty) {
+    out('! unknown deps (check ids, treated as satisfied): ${unknown.join(' ')}');
+  }
 }
 
 /// Receipt-safe rendering of free text: one line, quoted, capped hard so a
@@ -462,8 +516,12 @@ Future<int> _show(
   DateTime now,
 ) async {
   if (p.positional.isEmpty) throw GoalError('goal show <id>');
-  final e = store.resolve(p.positional.first);
+  // show reads the whole ledger: archived tickets stay inspectable forever,
+  // they are only read-only.
+  final ref = store.resolveAny(p.positional.first);
+  final e = ref.entry;
   final tags = [
+    if (ref.archived) 'archived',
     e.status.name,
     if (e.priority != null) e.priority.toString(),
     if (e.round.isNotEmpty) oneline(e.round),
@@ -521,6 +579,9 @@ Future<int> _render(
             'schemaVersion': store.meta.schemaVersion,
           },
           'goals': [for (final e in store.all) _entryJson(e)],
+          // a backup that silently dropped archived tickets would not be a
+          // backup — the archive is always part of the export
+          'archive': [for (final e in store.archivedAll) _entryJson(e)],
         })
       : _markdown(store, now);
   if (target == null) {
@@ -648,6 +709,24 @@ Future<int> _archive(
   return 0;
 }
 
+Future<int> _rm(
+  GoalStore store,
+  ParsedArgs p,
+  void Function(String) out,
+) async {
+  if (p.positional.isEmpty) {
+    throw GoalError('goal rm <id>. removes an active ticket; the audit '
+        'journal keeps the removal event');
+  }
+  if (p.positional.length > 1) {
+    throw GoalError("unexpected '${p.positional[1]}'. remove one ticket at "
+        'a time: goal rm <id>');
+  }
+  final entry = await store.remove(p.positional.first);
+  out('ok rm #${entry.id} ${oneline(entry.title)}');
+  return 0;
+}
+
 void _help(void Function(String) out) {
   String flags(String cmd) => _commandFlags[cmd]!.map(_flagName).join(' ');
   out('goal — AI-first goal ledger');
@@ -660,9 +739,10 @@ void _help(void Function(String) out) {
   out('  goal list [filters]              filters: status/round/priority/id/title');
   out('                                   words, or ${flags('list')}');
   out('  goal ready                       tickets whose deps are all done');
-  out('  goal show <id>                   full ticket');
+  out('  goal show <id>                   full ticket (archived too, read-only)');
   out('  goal render [-o file] [--json]   markdown view / json backup');
   out('  goal archive [--dry-run]         move done tickets to archive');
+  out('  goal rm <id>                     remove an active ticket');
   out('');
   out('exit codes: 0 ok | 2 not-found/usage/busy | 4 dependency cycle');
 }
