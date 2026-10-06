@@ -133,9 +133,9 @@ void main() {
       await run(['init']);
       await run(['add', 'task']);
       expect(await run(['set', '1', 'wip', '--agent', 'agent_9f3c']), 0);
-      expect(out.single, 'ok 1 todo -> wip +agent=agent_9f3c');
+      expect(out.single, 'ok #1 todo -> wip +agent=agent_9f3c');
       expect(await run(['set', '1', 'done', '改了 a.dart; 测试通过']), 0);
-      expect(out.single, 'ok 1 wip -> done +note="改了 a.dart; 测试通过"');
+      expect(out.single, 'ok #1 wip -> done +note="改了 a.dart; 测试通过"');
     });
 
     test('idempotent: repeating a status is not an error', () async {
@@ -150,7 +150,7 @@ void main() {
       await run(['init']);
       await run(['add', 't']);
       expect(await run(['set', '1']), 0);
-      expect(out.single, 'ok 1 ping');
+      expect(out.single, 'ok #1 ping');
     });
 
     test('typo status fails loudly with the legal values', () async {
@@ -173,10 +173,10 @@ void main() {
       await run(['init']);
       await run(['add', 't']);
       expect(await run(['set', '1', '✅']), 0);
-      expect(out.single, 'ok 1 todo -> done');
+      expect(out.single, 'ok #1 todo -> done');
       expect(await run(['set', '1', 'wip']), 0);
       expect(await run(['set', '1', 'complete']), 0);
-      expect(out.single, 'ok 1 wip -> done');
+      expect(out.single, 'ok #1 wip -> done');
     });
 
     test('agent is auto-cleared when leaving wip', () async {
@@ -205,7 +205,7 @@ void main() {
             stdin: () async => 'piped note\n'),
         0,
       );
-      expect(out.single, 'ok 1 todo -> wip +note="piped note"');
+      expect(out.single, 'ok #1 todo -> wip +note="piped note"');
       await run(['show', '1']);
       expect(out.join('\n'), contains('piped note'));
     });
@@ -216,7 +216,7 @@ void main() {
       await run(['add', 'a', '--round', 'R798']);
       await run(['add', 'b']);
       expect(await run(['set', '1', '--round', 'R800']), 0);
-      expect(out.single, 'ok 1 updated +round=R800');
+      expect(out.single, 'ok #1 updated +round=R800');
       await run(['show', '1']);
       expect(out.join('\n'), contains('[R800]'));
       // ticket 2 still inherits the ledger-wide round
@@ -263,7 +263,7 @@ void main() {
       ]);
       expect(await run(['list', 'todo', 'R798', 'p1']), 0);
       expect(out.where((l) => l.startsWith('2')), isEmpty);
-      expect(out.first, startsWith('1 '));
+      expect(out.first, startsWith('#1 '));
       expect(out.last, startsWith('--'));
     });
 
@@ -285,9 +285,9 @@ void main() {
         ['add', 'b'],
       ]);
       expect(await run(['list', '2']), 0);
-      expect(out.first, startsWith('2 '));
+      expect(out.first, startsWith('#2 '));
       await run(['list', '#1']);
-      expect(out.first, startsWith('1 '));
+      expect(out.first, startsWith('#1 '));
     });
 
     test('title substring is case-insensitive', () async {
@@ -323,11 +323,11 @@ void main() {
         ['add', 'b', '--round', 'R799'],
       ]);
       expect(await run(['list', '-p1']), 0);
-      expect(out.first, startsWith('1 '));
+      expect(out.first, startsWith('#1 '));
       await run(['list', '--round', 'R799']);
-      expect(out.first, startsWith('2 '));
+      expect(out.first, startsWith('#2 '));
       await run(['list', '--id', '2']);
-      expect(out.first, startsWith('2 '));
+      expect(out.first, startsWith('#2 '));
       expect(await run(['list', '--id', '9']), 0);
       expect(out.first, 'no matches.');
     });
@@ -486,7 +486,7 @@ void main() {
       );
       expect(
         out.single,
-        'ok 1 todo -> wip +note="note text" +agent=agent_x +deps=2 '
+        'ok #1 todo -> wip +note="note text" +agent=agent_x +deps=2 '
         '+round=R900 +pri=P2',
       );
     });
@@ -496,7 +496,7 @@ void main() {
       await run(['add', 't']);
       final long = 'x' * 100;
       expect(await run(['set', '1', '-m', 'first\n$long']), 0);
-      expect(out.single, 'ok 1 updated +note="first ${'x' * 34}"');
+      expect(out.single, 'ok #1 updated +note="first ${'x' * 34}"');
       expect(out.single.contains('\n'), isFalse);
       // the stored note itself is untouched
       await run(['show', '1']);
@@ -547,7 +547,7 @@ void main() {
       await run(['init']);
       await run(['add', 'two\nwords']);
       expect(await run(['list', 'two words']), 0);
-      expect(out.first, startsWith('1 '));
+      expect(out.first, startsWith('#1 '));
     });
   });
 
@@ -588,7 +588,7 @@ void main() {
       expect(
           await run(['set', '1', '--title', 'right title', '--detail', 'body']),
           0);
-      expect(out.single, 'ok 1 updated +title="right title" +detail="body"');
+      expect(out.single, 'ok #1 updated +title="right title" +detail="body"');
       await run(['show', '1']);
       final text = out.join('\n');
       expect(text, contains('  right title'));
@@ -629,7 +629,7 @@ void main() {
       expect(out.last, startsWith('ok #1 created'));
       await run(['set', '1', '--deps', '88']);
       expect(out.first, contains('88'));
-      expect(out.last, 'ok 1 updated +deps=88');
+      expect(out.last, 'ok #1 updated +deps=88');
     });
 
     test('help works in flag position', () async {
@@ -662,7 +662,7 @@ void main() {
       await run(['init']);
       await run(['add', 'alpha']);
       expect(await run(['set', '#1', 'wip']), 0);
-      expect(out.single, 'ok 1 todo -> wip');
+      expect(out.single, 'ok #1 todo -> wip');
       expect(await run(['show', '#1']), 0);
       expect(out.first, '#1 [wip]');
       await run(['add', 'child', '--deps', '#1']);
@@ -828,19 +828,19 @@ void main() {
 
       // release the lane explicitly, with receipt
       expect(await run(['set', '1', '--clear', 'agent']), 0);
-      expect(out.single, 'ok 1 updated +cleared=agent');
+      expect(out.single, 'ok #1 updated +cleared=agent');
       await run(['show', '1']);
       expect(out.join('\n'), contains('  agent: -'));
 
       // combined clears report every field
       await run(['set', '1', '--clear', 'pri,round']);
-      expect(out.single, 'ok 1 updated +cleared=pri,round');
+      expect(out.single, 'ok #1 updated +cleared=pri,round');
       await run(['show', '1']);
       expect(out.first, '#1 [wip]');
 
       // idempotent clear on an already-empty field is a ping, not an update
       expect(await run(['set', '1', '--clear', 'agent']), 0);
-      expect(out.single, 'ok 1 ping');
+      expect(out.single, 'ok #1 ping');
 
       // empty or blank flag values fail with tutorials, never silently clear
       expect(await run(['set', '1', '--agent', '']), 2);
@@ -872,7 +872,7 @@ void main() {
       await run(['ready']);
       expect(out.join('\n'), isNot(contains('child')));
       expect(await run(['set', '2', '--clear', 'deps']), 0);
-      expect(out.single, 'ok 2 updated +cleared=deps');
+      expect(out.single, 'ok #2 updated +cleared=deps');
       await run(['ready']);
       expect(out.join('\n'), contains('child'));
       await run(['show', '2']);
@@ -888,9 +888,9 @@ void main() {
       await run(['add', 't']);
       await run(['add', 'u']);
       expect(await run(['set', '1', '--title=fixed']), 0);
-      expect(out.single, 'ok 1 updated +title="fixed"');
+      expect(out.single, 'ok #1 updated +title="fixed"');
       expect(await run(['set', '1', '--deps=2']), 0);
-      expect(out.single, 'ok 1 updated +deps=2');
+      expect(out.single, 'ok #1 updated +deps=2');
     });
 
     test('dash-leading titles survive via --', () async {

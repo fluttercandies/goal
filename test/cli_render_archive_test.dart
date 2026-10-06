@@ -256,7 +256,7 @@ void main() {
       await run(['add', 'first process']);
       // separate invocation simulates another CLI process
       expect(await run(['list']), 0);
-      expect(out.first, startsWith('1 '));
+      expect(out.first, startsWith('#1 '));
     });
 
     test('markdown render keeps multiline content inside its bullet', () async {

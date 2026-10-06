@@ -31,10 +31,10 @@ $ goal add "修复 iOS 登录崩溃" -p1 --round R12
 ok #1 created (todo) round=R12 修复 iOS 登录崩溃
 
 $ goal set 1 wip --agent agent_a
-ok 1 todo -> wip +agent=agent_a
+ok #1 todo -> wip +agent=agent_a
 
 $ goal set 1 done "改了 login.dart; flutter test 通过"
-ok 1 wip -> done +note="改了 login.dart; flutter test 通过"
+ok #1 wip -> done +note="改了 login.dart; flutter test 通过"
 
 $ goal add "增加离线模式" -p2
 ok #2 created (todo) 增加离线模式

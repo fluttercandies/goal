@@ -32,10 +32,10 @@ $ goal add "Fix login crash on iOS" -p1 --round R12
 ok #1 created (todo) round=R12 Fix login crash on iOS
 
 $ goal set 1 wip --agent agent_a
-ok 1 todo -> wip +agent=agent_a
+ok #1 todo -> wip +agent=agent_a
 
 $ goal set 1 done "fixed login.dart; flutter test green"
-ok 1 wip -> done +note="fixed login.dart; flutter test green"
+ok #1 wip -> done +note="fixed login.dart; flutter test green"
 
 $ goal add "Add offline mode" -p2
 ok #2 created (todo) Add offline mode

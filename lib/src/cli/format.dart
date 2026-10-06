@@ -74,12 +74,15 @@ const statusColumnWidth = 8;
 
 /// One-line table row: id, priority, status, age, agent, truncated title.
 /// Title and agent pass through [oneline] so a newline inside them can never
-/// break the row structure.
+/// break the row structure. The id carries the `#` prefix like every other
+/// ticket reference, so a row can be typed back verbatim (`goal set #12 …`).
 String listLine(GoalEntry e, DateTime now) {
   final pri = e.priority?.toString() ?? '-';
   final agent = e.agent == null ? '-' : trunc(oneline(e.agent!), 12);
-  return '${cell(e.id, 12)}${cell(pri, 3)}${cell(e.status.name, statusColumnWidth)}'
-      '${cell(age(e.updatedAt, now), 5)}${cell(agent, 13)}${trunc(oneline(e.title), 60)}';
+  return '${cell('#${e.id}', 12)}${cell(pri, 3)}'
+      '${cell(e.status.name, statusColumnWidth)}'
+      '${cell(age(e.updatedAt, now), 5)}${cell(agent, 13)}'
+      '${trunc(oneline(e.title), 60)}';
 }
 
 const statusViewOrder = [

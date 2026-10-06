@@ -483,7 +483,8 @@ Future<int> _set(
     await store.put(entry.copyWith(updatedAt: now), changes: {'ping': true});
     // explicit repeat of the current status is an idempotent no-op, not a
     // heartbeat; both are exit 0 so retries never look like failures
-    out('ok ${entry.id} ${status == null ? 'ping' : 'already ${entry.status.name}'}');
+    out('ok #${entry.id} '
+        '${status == null ? 'ping' : 'already ${entry.status.name}'}');
     return 0;
   }
   await store.put(next, changes: changes);
@@ -504,7 +505,7 @@ Future<int> _set(
     if (changes.containsKey('priority')) 'pri=${p.priority}',
     if (cleared.isNotEmpty) 'cleared=${cleared.join(',')}',
   ];
-  out('ok ${entry.id} $head'
+  out('ok #${entry.id} $head'
       "${extras.isEmpty ? '' : ' +${extras.join(' +')}'}");
   return 0;
 }

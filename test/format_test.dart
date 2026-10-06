@@ -276,7 +276,7 @@ void main() {
         ),
         now,
       );
-      expect(line.startsWith('station213  '), isTrue);
+      expect(line.startsWith('#station213'), isTrue);
       expect(line.contains(' wip    '), isTrue);
       expect(line.contains('agent_9f3c'), isTrue);
       expect(line.endsWith('X' * 60), isTrue);

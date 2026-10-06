@@ -25,7 +25,10 @@ All notable changes to this package are documented in this file.
   ledger is authoritative, so a journal gap never fails (and never fakes a
   failure for) an operation whose data write already succeeded.
 - Ids accept the `#` prefix everywhere they appear (`goal set #12 done`,
-  `--deps #3,#4`), matching how renders and `list` display ids.
+  `--deps #3,#4`), matching how renders and `list` display ids; and every
+  receipt and list row now references its ticket as `#12` as well, so what
+  you read is exactly what you can type back (bare ids remain valid input;
+  field-value lists like `deps=1,2` stay bare).
 - Junk positionals are rejected loudly (`goal ready now`, `goal show 1 extra`)
   instead of being silently dropped.
 - `rm` warns immediately when other tickets still depend on the removed id —
