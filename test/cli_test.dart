@@ -819,15 +819,68 @@ void main() {
       expect(err.single, contains('re-send'));
     });
 
-    test('blank --agent releases the lane instead of storing an empty owner',
+    test('--clear is the dedicated mechanism; empty values get tutorials',
         () async {
       await run(['init']);
       await run(['add', 't']);
-      await run(['set', '1', 'wip', '--agent', 'agent_x']);
-      expect(await run(['set', '1', '--agent', '']), 0);
-      expect(out.single, 'ok 1 updated +agent=-');
+      await run(
+          ['set', '1', 'wip', '--agent', 'agent_x', '-p1', '--round', 'R9']);
+
+      // release the lane explicitly, with receipt
+      expect(await run(['set', '1', '--clear', 'agent']), 0);
+      expect(out.single, 'ok 1 updated +cleared=agent');
       await run(['show', '1']);
       expect(out.join('\n'), contains('  agent: -'));
+
+      // combined clears report every field
+      await run(['set', '1', '--clear', 'pri,round']);
+      expect(out.single, 'ok 1 updated +cleared=pri,round');
+      await run(['show', '1']);
+      expect(out.first, '#1 [wip]');
+
+      // idempotent clear on an already-empty field is a ping, not an update
+      expect(await run(['set', '1', '--clear', 'agent']), 0);
+      expect(out.single, 'ok 1 ping');
+
+      // empty or blank flag values fail with tutorials, never silently clear
+      expect(await run(['set', '1', '--agent', '']), 2);
+      expect(err.single, contains('--clear agent'));
+      expect(await run(['set', '1', '--agent', '-']), 2);
+      expect(err.single, contains("--agent takes an agent id, not '-'"));
+      expect(await run(['set', '1', '--deps', '']), 2);
+      expect(err.single, contains('--clear deps'));
+      expect(await run(['set', '1', '--clear', '']), 2);
+      expect(err.single, contains('clearable fields'));
+
+      // unknown field names list the valid ones
+      expect(await run(['set', '1', '--clear', 'title']), 2);
+      expect(err.single, contains("cannot clear 'title'"));
+      expect(err.single, contains('agent pri round deps'));
+
+      // set and clear on one field in one command is a contradiction
+      expect(await run(['set', '1', '--agent', 'b', '--clear', 'agent']), 2);
+      expect(err.single, contains('cannot set and clear agent'));
+      expect(await run(['set', '1', '-p2', '--clear', 'pri']), 2);
+      expect(err.single, contains('cannot set and clear pri'));
+    });
+
+    test('--clear deps unblocks the ticket and clears the round label',
+        () async {
+      await run(['init']);
+      await run(['add', 'dep', '--round', 'R1']);
+      await run(['add', 'child', '--deps', '1', '--round', 'R1']);
+      await run(['ready']);
+      expect(out.join('\n'), isNot(contains('child')));
+      expect(await run(['set', '2', '--clear', 'deps']), 0);
+      expect(out.single, 'ok 2 updated +cleared=deps');
+      await run(['ready']);
+      expect(out.join('\n'), contains('child'));
+      await run(['show', '2']);
+      expect(out.join('\n'), contains('  deps: -'));
+      expect(out.join('\n'), contains('R1]'));
+      expect(await run(['set', '2', '--clear', 'round']), 0);
+      await run(['show', '2']);
+      expect(out.first, '#2 [todo]');
     });
 
     test('equals-form valued flags parse', () async {

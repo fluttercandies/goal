@@ -12,7 +12,8 @@ const statusWords = 'todo wip done blocked failed parked';
 
 const _flagHint =
     'flags: -p0..-p3 -m <text|-> --title <text> --detail <text|-> '
-    '--deps <a,b> --round <R> --agent <id> -o <file> --json --dry-run';
+    '--deps <a,b> --round <R> --agent <id> --clear <fields> '
+    '-o <file> --json --dry-run';
 
 /// Parses argv into positionals, valued options, bool flags and `-pN`.
 class ParsedArgs {
@@ -31,7 +32,17 @@ ParsedArgs parseArgs(List<String> args) {
   final opts = <String, String>{};
   final bools = <String>{};
   GoalPriority? priority;
-  const valued = {'m', 'o', 'agent', 'deps', 'round', 'id', 'title', 'detail'};
+  const valued = {
+    'm',
+    'o',
+    'agent',
+    'deps',
+    'round',
+    'id',
+    'title',
+    'detail',
+    'clear'
+  };
 
   var i = 0;
   var flagsDone = false;
@@ -152,7 +163,7 @@ Future<int> runGoalCli(
 const _commandFlags = <String, Set<String>>{
   'init': {},
   'add': {'p', 'm', 'round', 'deps'},
-  'set': {'p', 'm', 'round', 'deps', 'agent', 'title', 'detail'},
+  'set': {'p', 'm', 'round', 'deps', 'agent', 'title', 'detail', 'clear'},
   'list': {'p', 'round', 'id'},
   'ready': {},
   'show': {},
@@ -169,6 +180,7 @@ String _flagName(String f) => switch (f) {
       'deps' => '--deps <a,b>',
       'id' => '--id <id>',
       'agent' => '--agent <id>',
+      'clear' => '--clear <agent|pri|round|deps>',
       'title' => '--title <text|->',
       'detail' => '--detail <text|->',
       _ => '--$f',
@@ -348,8 +360,44 @@ Future<int> _set(
 
   final round = p.options['round'];
   if (round != null && round.trim().isEmpty) {
-    throw GoalError('--round value is empty. pass e.g. --round R12');
+    throw GoalError(
+        '--round value is empty. pass e.g. --round R12, or --clear round');
   }
+
+  // Clearing is an explicit, dedicated mechanism: an empty --agent/--deps
+  // value is far more likely a variable-expansion bug than intent, so it
+  // fails with a tutorial pointing here instead of silently mutating.
+  const clearable = {'agent', 'pri', 'round', 'deps'};
+  final clearFields = <String>{};
+  final clearRaw = p.options['clear'];
+  if (clearRaw != null) {
+    clearFields.addAll(splitIds(clearRaw));
+    if (clearFields.isEmpty) {
+      throw GoalError('--clear value is empty. clearable fields: '
+          '${clearable.join(' ')}');
+    }
+    for (final f in clearFields) {
+      if (!clearable.contains(f)) {
+        throw GoalError("cannot clear '$f'. clearable fields: "
+            '${clearable.join(' ')}');
+      }
+    }
+    // set and clear on the same field in one command is a contradiction;
+    // silent precedence would hide the mistake
+    if (clearFields.contains('agent') && p.options['agent'] != null) {
+      throw GoalError('cannot set and clear agent in one command');
+    }
+    if (clearFields.contains('pri') && p.priority != null) {
+      throw GoalError('cannot set and clear pri in one command');
+    }
+    if (clearFields.contains('round') && round != null) {
+      throw GoalError('cannot set and clear round in one command');
+    }
+    if (clearFields.contains('deps') && p.options['deps'] != null) {
+      throw GoalError('cannot set and clear deps in one command');
+    }
+  }
+
   final newTitle = await _optionText(p, 'title', '--title', readStdin);
   final newDetail = await _optionText(p, 'detail', '--detail', readStdin);
   final changes = <String, Object?>{};
@@ -371,19 +419,25 @@ Future<int> _set(
   }
   final agent = p.options['agent'];
   if (agent != null) {
-    // `--agent ''` releases the lane instead of storing an empty owner.
-    final blank = oneline(agent).isEmpty;
-    next = next.copyWith(
-      agent: blank ? null : agent,
-      clearAgent: blank,
-      updatedAt: now,
-    );
-    changes['agent'] = blank ? null : agent;
+    if (oneline(agent).isEmpty) {
+      throw GoalError('--agent value is empty. pass an agent id, or release '
+          'the lane with: goal set <id> --clear agent');
+    }
+    if (agent.trim() == '-') {
+      throw GoalError("--agent takes an agent id, not '-'. to release the "
+          'lane: goal set <id> --clear agent');
+    }
+    next = next.copyWith(agent: agent, updatedAt: now);
+    changes['agent'] = agent;
   }
   final deps = p.options['deps'];
   var depIds = const <String>[];
   if (deps != null) {
     depIds = splitIds(deps);
+    if (depIds.isEmpty) {
+      throw GoalError('--deps value is empty. pass ids like --deps 1,2, or '
+          'drop dependencies with: goal set <id> --clear deps');
+    }
     _warnUnknownDeps(store, depIds, out);
     next = next.copyWith(deps: depIds, updatedAt: now);
     changes['deps'] = depIds;
@@ -396,6 +450,26 @@ Future<int> _set(
     next = next.copyWith(priority: p.priority, updatedAt: now);
     changes['priority'] = p.priority.toString();
   }
+  // Fields already empty record no change, so an idempotent `--clear` falls
+  // through to the ping path instead of reporting a no-op as an update.
+  final cleared = <String>[];
+  if (clearFields.contains('agent') && next.agent != null) {
+    next = next.copyWith(clearAgent: true, updatedAt: now);
+    cleared.add('agent');
+  }
+  if (clearFields.contains('pri') && next.priority != null) {
+    next = next.copyWith(clearPriority: true, updatedAt: now);
+    cleared.add('pri');
+  }
+  if (clearFields.contains('round') && next.round.isNotEmpty) {
+    next = next.copyWith(round: '', updatedAt: now);
+    cleared.add('round');
+  }
+  if (clearFields.contains('deps') && next.deps.isNotEmpty) {
+    next = next.copyWith(deps: const [], updatedAt: now);
+    cleared.add('deps');
+  }
+  if (cleared.isNotEmpty) changes['cleared'] = cleared.join(',');
   if (newTitle.isNotEmpty) {
     next = next.copyWith(title: newTitle, updatedAt: now);
     changes['title'] = newTitle;
@@ -424,11 +498,11 @@ Future<int> _set(
     if (changes.containsKey('title')) 'title=${_shown(newTitle)}',
     if (changes.containsKey('detail')) 'detail=${_shown(newDetail)}',
     if (note.isNotEmpty) 'note=${_shown(note)}',
-    if (changes.containsKey('agent'))
-      'agent=${changes['agent'] == null ? '-' : oneline(agent!)}',
+    if (changes.containsKey('agent')) 'agent=${oneline(agent!)}',
     if (changes.containsKey('deps')) 'deps=${depIds.join(',')}',
     if (changes.containsKey('round')) 'round=${oneline(round!)}',
     if (changes.containsKey('priority')) 'pri=${p.priority}',
+    if (cleared.isNotEmpty) 'cleared=${cleared.join(',')}',
   ];
   out('ok ${entry.id} $head'
       "${extras.isEmpty ? '' : ' +${extras.join(' +')}'}");
@@ -780,6 +854,7 @@ void _help(void Function(String) out) {
   out('  goal add <title> ${flags('add')}');
   out('  goal set <id> [status] [note...] status: $statusWords');
   out('                                   ${flags('set')}');
+  out('                                   --clear agent|pri|round|deps');
   out('                                   no args after id = heartbeat ping');
   out('  goal list [filters]              filters: status/round/priority/id/title');
   out('                                   words, or ${flags('list')}');

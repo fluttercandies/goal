@@ -51,7 +51,7 @@ $ goal ready
 | --- | --- |
 | `goal init` | create a ledger in `./.goal` (once per project) |
 | `goal add <title>` | add a ticket; flags: `-p0..-p3` `--deps a,b` `--round R` `-m <text>` |
-| `goal set <id> [status] [note...]` | update a ticket — change status, add a note, set `--agent`, `--deps`, `--round`, `-pN`, or correct the text with `--title`/`--detail` (`-` reads stdin, like `-m`). No arguments = heartbeat. Ids accept the `#` prefix. |
+| `goal set <id> [status] [note...]` | update a ticket — change status, add a note, set `--agent`, `--deps`, `--round`, `-pN`, correct the text with `--title`/`--detail` (`-` reads stdin, like `-m`), or unset fields with `--clear agent\|pri\|round\|deps`. No arguments = heartbeat. Ids accept the `#` prefix. |
 | `goal list [filters]` | list tickets. Filter by bare words: status, round, priority, `#id`, or title text — combined freely (`goal list wip R12`). The same filters accept flags: `-pN` `--round <R>` `--id <id>` |
 | `goal ready` | todo tickets whose dependencies are all done, highest priority first |
 | `goal show <id>` | everything about one ticket — archived tickets too, tagged `[archived]` |

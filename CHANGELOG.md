@@ -43,8 +43,13 @@ All notable changes to this package are documented in this file.
   `；` and Unicode whitespace), not just the ASCII comma.
 - Non-UTF-8 piped stdin fails with an actionable message instead of an
   opaque decoder error.
-- `--agent ''` releases the lane (agent cleared) instead of storing an
-  empty owner; the receipt prints `agent=-`.
+- New `--clear <fields>` flag is the dedicated way to unset a field:
+  `--clear agent` releases a lane, `--clear pri,round,deps` unsets
+  priority/round/dependencies in one call (priority was previously
+  impossible to remove). Empty `--agent`/`--deps` values and `--agent -`
+  fail with tutorials pointing at `--clear` — an empty value is more
+  likely a variable-expansion bug than intent; set+clear on the same
+  field in one command is rejected as a contradiction.
 - `add` receipts include `+deps=…` when dependencies were set.
 
 ## 1.0.1 - 2026-10-06
