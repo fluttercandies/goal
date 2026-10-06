@@ -221,5 +221,32 @@ void main() {
       expect(await run(['list']), 0);
       expect(out.first, startsWith('1 '));
     });
+
+    test('markdown render keeps multiline content inside its bullet', () async {
+      await run(['init']);
+      await run(['add', 'title line1\n- forged item']);
+      await run(['set', '1', 'wip', '-m', 'note line1\nnote line2']);
+      expect(await run(['render']), 0);
+      final lines = out.join('\n').split('\n');
+      expect(lines, contains('- **#1** title line1'));
+      // a title line that looks like a bullet is indented into the item,
+      // never promoted to a top-level bullet of its own
+      expect(lines, contains('  - forged item'));
+      final noteLine = lines.firstWhere((l) => l.contains('note line1'));
+      expect(noteLine.startsWith('  - ['), isTrue);
+      expect(lines, contains('    note line2'));
+    });
+
+    test('json render preserves multiline fields verbatim', () async {
+      await run(['init']);
+      await run(['add', 'two\nlines', '-m', 'd1\nd2']);
+      await run(['set', '1', '-m', 'n1\nn2']);
+      expect(await run(['render', '--json']), 0);
+      final data = jsonDecode(out.join('\n')) as Map<String, dynamic>;
+      final g = (data['goals'] as List).single as Map<String, dynamic>;
+      expect(g['title'], 'two\nlines');
+      expect(g['detail'], 'd1\nd2');
+      expect((g['notes'] as List).single['text'] as String, 'n1\nn2');
+    });
   });
 }

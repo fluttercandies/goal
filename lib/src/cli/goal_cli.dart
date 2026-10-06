@@ -81,15 +81,27 @@ ParsedArgs parseArgs(List<String> args) {
   return ParsedArgs(pos, opts, bools, priority);
 }
 
-List<String> splitIds(String raw) =>
-    raw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+List<String> splitIds(String raw) => raw
+    .split(',')
+    .map((s) => s.trim())
+    .where((s) => s.isNotEmpty)
+    .toSet() // first occurrence wins; '2,2' must not show dep 2 twice
+    .toList();
 
 Future<String> _noteText(
     ParsedArgs p, Future<String> Function() readStdin) async {
   final v = p.options['m'];
   if (v == null) return '';
   if (v == '-') {
-    return (await readStdin()).trim();
+    final s = (await readStdin()).trim();
+    if (s.isEmpty) {
+      throw GoalError('-m - read nothing from stdin. pipe the note in, '
+          'e.g. echo "text" | goal set <id> -m -');
+    }
+    return s;
+  }
+  if (v.trim().isEmpty) {
+    throw GoalError('-m note text is empty. pass text, or - to read stdin');
   }
   return v;
 }
@@ -226,24 +238,29 @@ Future<int> _add(
   DateTime now,
   Future<String> Function() readStdin,
 ) async {
-  if (p.positional.isEmpty) {
+  // Bare words join into one title: an unquoted `goal add two words` must
+  // succeed in one shot, not bounce back with a quoting lesson.
+  final title = p.positional.join(' ').trim();
+  if (oneline(title).isEmpty) {
     throw GoalError(
-        'goal add <title> [-pN] [--deps a,b] [--round R] [-m text]');
+        'title cannot be empty. goal add <title> [-pN] [--deps a,b] '
+        '[--round R] [-m text]');
   }
-  if (p.positional.length > 1) {
-    throw GoalError(
-        "unexpected '${p.positional[1]}'. quote the title if it contains spaces");
+  final round = p.options['round'];
+  if (round != null && round.trim().isEmpty) {
+    throw GoalError('--round value is empty. pass e.g. --round R12');
   }
   final entry = await store.add(
-    title: p.positional.first,
+    title: title,
     detail: await _noteText(p, readStdin),
-    round: p.options['round'] ?? '',
+    round: round ?? '',
     deps: p.options['deps'] == null ? const [] : splitIds(p.options['deps']!),
     priority: p.priority,
     now: now,
   );
   out('ok #${entry.id} created (todo)'
-      '${entry.round.isEmpty ? '' : ' round=${entry.round}'} ${entry.title}');
+      '${entry.round.isEmpty ? '' : ' round=${oneline(entry.round)}'} '
+      '${oneline(entry.title)}');
   return 0;
 }
 
@@ -272,10 +289,14 @@ Future<int> _set(
     rest = rest.skip(1).toList();
   }
   final note = [
-    rest.join(' '),
+    rest.join(' ').trim(),
     await _noteText(p, readStdin),
   ].where((s) => s.isNotEmpty).join(' ');
 
+  final round = p.options['round'];
+  if (round != null && round.trim().isEmpty) {
+    throw GoalError('--round value is empty. pass e.g. --round R12');
+  }
   final changes = <String, Object?>{};
   var next = entry;
   if (status != null && status != entry.status) {
@@ -299,11 +320,12 @@ Future<int> _set(
     changes['agent'] = agent;
   }
   final deps = p.options['deps'];
+  var depIds = const <String>[];
   if (deps != null) {
-    next = next.copyWith(deps: splitIds(deps), updatedAt: now);
-    changes['deps'] = splitIds(deps);
+    depIds = splitIds(deps);
+    next = next.copyWith(deps: depIds, updatedAt: now);
+    changes['deps'] = depIds;
   }
-  final round = p.options['round'];
   if (round != null) {
     next = next.copyWith(round: round, updatedAt: now);
     changes['round'] = round;
@@ -326,18 +348,23 @@ Future<int> _set(
       : status != null
           ? 'already ${entry.status.name}'
           : 'updated';
-  // The receipt must state every field that changed, not just the status.
-  final extras = [
-    if (note.isNotEmpty) 'note',
-    if (changes.containsKey('agent')) 'agent',
-    if (changes.containsKey('deps')) 'deps',
-    if (changes.containsKey('round')) 'round',
-    if (changes.containsKey('priority')) 'pri',
+  // The receipt states every changed field with its new value, so the caller
+  // never needs a second command to verify what happened.
+  final extras = <String>[
+    if (note.isNotEmpty) 'note=${_shown(note)}',
+    if (changes.containsKey('agent')) 'agent=${oneline(agent!)}',
+    if (changes.containsKey('deps')) 'deps=${depIds.join(',')}',
+    if (changes.containsKey('round')) 'round=${oneline(round!)}',
+    if (changes.containsKey('priority')) 'pri=${p.priority}',
   ];
   out('ok ${entry.id} $head'
       "${extras.isEmpty ? '' : ' +${extras.join(' +')}'}");
   return 0;
 }
+
+/// Receipt-safe rendering of free text: one line, quoted, capped hard so a
+/// paragraph-sized note cannot bloat the receipt.
+String _shown(String s) => '"${trunc(oneline(s), 40)}"';
 
 Future<int> _list(
   GoalStore store,
@@ -384,8 +411,11 @@ Future<int> _list(
     if (priority != null && e.priority != priority) return false;
     if (round != null && e.round.toLowerCase() != round) return false;
     if (ids.isNotEmpty && !ids.contains(e.id)) return false;
+    // Search both the raw title and its one-line projection, so `list two`
+    // still finds a title stored as `two\nwords`.
     final title = e.title.toLowerCase();
-    return titleSubs.every(title.contains);
+    final flat = oneline(e.title).toLowerCase();
+    return titleSubs.every((s) => title.contains(s) || flat.contains(s));
   }).toList()
     ..sort((a, b) {
       final s = statusViewRank(a.status).compareTo(statusViewRank(b.status));
@@ -418,7 +448,8 @@ Future<int> _ready(
     out(listLine(e, now));
   }
   if (missing.isNotEmpty) {
-    out('! unknown deps (treated as satisfied): ${missing.join(' ')}');
+    out('! unknown deps (treated as satisfied): '
+        '${missing.map(oneline).join(' ')}');
   }
   out('-- ${list.length} ready');
   return 0;
@@ -435,17 +466,20 @@ Future<int> _show(
   final tags = [
     e.status.name,
     if (e.priority != null) e.priority.toString(),
-    if (e.round.isNotEmpty) e.round,
+    if (e.round.isNotEmpty) oneline(e.round),
   ];
   out('#${e.id} [${tags.join('] [')}]');
-  out('  ${e.title}');
-  out('  agent: ${e.agent ?? '-'}');
+  // Verbatim view: a multiline title keeps its lines, each indented.
+  for (final line in textLines(e.title)) {
+    out('  $line');
+  }
+  out('  agent: ${e.agent == null ? '-' : oneline(e.agent!)}');
   final deps = e.deps.map((d) {
     final t = store.get(d);
     final state = t == null
         ? (store.isArchived(d) ? 'archived' : 'missing')
         : t.status.name;
-    return '$d ($state)';
+    return '${oneline(d)} ($state)';
   });
   out('  deps: ${e.deps.isEmpty ? '-' : deps.join(', ')}');
   out('  created: ${fullStamp(e.createdAt)}  '
@@ -454,13 +488,19 @@ Future<int> _show(
     out('  detail: -');
   } else {
     out('  detail:');
-    for (final line in e.detail.split('\n')) {
+    for (final line in textLines(e.detail)) {
       out('    $line');
     }
   }
   out('  notes:');
+  // Continuation lines align under the text, after '    [MM-DD HH:mm] '.
   for (final n in e.notes) {
-    out('    [${stamp(n.at)}] ${n.text}');
+    final lines = textLines(n.text);
+    out('    [${stamp(n.at)}] ${lines.first}');
+    final pad = ' ' * ('    ['.length + stamp(n.at).length + '] '.length);
+    for (final line in lines.skip(1)) {
+      out('$pad$line');
+    }
   }
   return 0;
 }
@@ -524,11 +564,15 @@ String _markdown(GoalStore store, DateTime now) {
     buf.writeln('\n## ${s.emoji} ${s.name} (${group.length})');
     for (final e in group) {
       final pri = e.priority == null ? '' : ' [${e.priority}]';
-      final agent =
-          e.agent == null ? '' : ' — ${e.agent}, ${age(e.updatedAt, now)}';
-      buf.writeln('- **#${e.id}**$pri ${e.title}$agent');
+      final agent = e.agent == null
+          ? ''
+          : ' — ${oneline(e.agent!)}, ${age(e.updatedAt, now)}';
+      // Continuation lines are indented into the bullet, so a multiline
+      // title can never forge a new top-level item or heading.
+      final title = textLines(e.title).join('\n  ');
+      buf.writeln('- **#${e.id}**$pri $title$agent');
       for (final n in e.notes) {
-        buf.writeln('  - [${stamp(n.at)}] ${n.text}');
+        buf.writeln('  - [${stamp(n.at)}] ${textLines(n.text).join('\n    ')}');
       }
     }
   }

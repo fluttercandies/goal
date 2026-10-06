@@ -32,10 +32,10 @@ $ goal add "Fix login crash on iOS" -p1 --round R12
 ok #1 created (todo) round=R12 Fix login crash on iOS
 
 $ goal set 1 wip --agent agent_a
-ok 1 todo -> wip
+ok 1 todo -> wip +agent=agent_a
 
 $ goal set 1 done "fixed login.dart; flutter test green"
-ok 1 wip -> done +note
+ok 1 wip -> done +note="fixed login.dart; flutter test green"
 
 $ goal add "Add offline mode" -p2
 ok #2 created (todo) Add offline mode
@@ -69,6 +69,13 @@ $ goal set 3 done "files: a.dart, b.dart; verify: dart test; evidence: docs/3.pn
 
 Long notes can be piped in to avoid quoting trouble: `goal set 3 done -m -`
 reads the note from stdin.
+
+Multiline and special characters are welcome everywhere: titles, details and
+notes are stored verbatim — `show` is the verbatim view — while receipts,
+`list` and `render` always print structurally safe single-line entries. Bare
+words after `goal add` join into one title, so an unquoted title still
+succeeds on the first try, and every receipt states the new values
+(`+agent=… +deps=1,2 +note="…"`) so no follow-up `show` is needed.
 
 ## Dependencies
 

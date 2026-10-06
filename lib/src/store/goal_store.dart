@@ -155,6 +155,9 @@ class GoalStore {
     GoalPriority? priority,
     required DateTime now,
   }) async {
+    if (title.trim().isEmpty) {
+      throw GoalError('title cannot be empty. pass the title as one argument');
+    }
     var meta = this.meta;
     // Defensive: skip ids already claimed (only possible after an
     // interrupted init) so allocation never overwrites an existing ticket.

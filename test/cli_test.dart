@@ -94,10 +94,11 @@ void main() {
       expect(err.single, contains('goal add <title>'));
     });
 
-    test('extra positional teaches quoting', () async {
+    test('bare words join into one title', () async {
       await run(['init']);
-      expect(await run(['add', 'two', 'words']), 2);
-      expect(err.single, contains('quote the title'));
+      // unquoted multi-word input must succeed in one shot
+      expect(await run(['add', 'two', 'words']), 0);
+      expect(out.single, 'ok #1 created (todo) two words');
     });
 
     test('unknown flag lists valid flags', () async {
@@ -132,9 +133,9 @@ void main() {
       await run(['init']);
       await run(['add', 'task']);
       expect(await run(['set', '1', 'wip', '--agent', 'agent_9f3c']), 0);
-      expect(out.single, 'ok 1 todo -> wip +agent');
+      expect(out.single, 'ok 1 todo -> wip +agent=agent_9f3c');
       expect(await run(['set', '1', 'done', '改了 a.dart; 测试通过']), 0);
-      expect(out.single, 'ok 1 wip -> done +note');
+      expect(out.single, 'ok 1 wip -> done +note="改了 a.dart; 测试通过"');
     });
 
     test('idempotent: repeating a status is not an error', () async {
@@ -204,7 +205,7 @@ void main() {
             stdin: () async => 'piped note\n'),
         0,
       );
-      expect(out.single, 'ok 1 todo -> wip +note');
+      expect(out.single, 'ok 1 todo -> wip +note="piped note"');
       await run(['show', '1']);
       expect(out.join('\n'), contains('piped note'));
     });
@@ -215,7 +216,7 @@ void main() {
       await run(['add', 'a', '--round', 'R798']);
       await run(['add', 'b']);
       expect(await run(['set', '1', '--round', 'R800']), 0);
-      expect(out.single, 'ok 1 updated +round');
+      expect(out.single, 'ok 1 updated +round=R800');
       await run(['show', '1']);
       expect(out.join('\n'), contains('[R800]'));
       // ticket 2 still inherits the ledger-wide round
@@ -411,6 +412,142 @@ void main() {
       expect(await run(['show', '42']), 2);
       expect(err.single, contains("no ticket '42'"));
       expect(err.single, contains('1'));
+    });
+  });
+
+  group('multiline and complex content', () {
+    test('multiline title: receipt and list stay one line, show is verbatim',
+        () async {
+      await run(['init']);
+      expect(await run(['add', 'first line\nsecond line']), 0);
+      expect(out.single, 'ok #1 created (todo) first line second line');
+      await run(['list']);
+      expect(out.first, contains('first line second line'));
+      expect(out.first.contains('\n'), isFalse);
+      await run(['show', '1']);
+      final text = out.join('\n');
+      expect(text, contains('  first line'));
+      expect(text, contains('  second line'));
+    });
+
+    test('control characters and ANSI render as plain single-line text',
+        () async {
+      await run(['init']);
+      await run(['add', 'a\x1B[31m\tb\x00c']);
+      await run(['list']);
+      expect(out.first.contains('\x1B'), isFalse);
+      expect(out.first, contains('a b c'));
+    });
+
+    test('blank titles are rejected with guidance', () async {
+      await run(['init']);
+      expect(await run(['add', '   ']), 2);
+      expect(err.single, contains('title cannot be empty'));
+      expect(await run(['add', '']), 2);
+      expect(await run(['add', '\x1B[31m']), 2); // control-only is blank too
+    });
+
+    test('empty note and round flags fail loudly, never silently', () async {
+      await run(['init']);
+      await run(['add', 't']);
+      expect(await run(['set', '1', '-m', '   ']), 2);
+      expect(err.single, contains('note text is empty'));
+      expect(await run(['set', '1', '-m', '-'], stdin: () async => '  \n'), 2);
+      expect(err.single, contains('read nothing from stdin'));
+      expect(await run(['set', '1', '--round', ' ']), 2);
+      expect(err.single, contains('--round value is empty'));
+      expect(await run(['add', 'u', '--round', ' ']), 2);
+      // the failed calls above wrote nothing
+      await run(['show', '1']);
+      expect(out.last, '  notes:');
+      expect(out.join('\n'), contains('#1 [todo]'));
+    });
+
+    test('receipts state every new value, no follow-up show needed', () async {
+      await run(['init']);
+      await run(['add', 'a']);
+      await run(['add', 'b']);
+      expect(
+        await run([
+          'set',
+          '1',
+          'wip',
+          '--agent',
+          'agent_x',
+          '-p2',
+          '--round',
+          'R900',
+          '--deps',
+          '2',
+          '-m',
+          'note text',
+        ]),
+        0,
+      );
+      expect(
+        out.single,
+        'ok 1 todo -> wip +note="note text" +agent=agent_x +deps=2 '
+        '+round=R900 +pri=P2',
+      );
+    });
+
+    test('long multiline note receipts are capped and single-line', () async {
+      await run(['init']);
+      await run(['add', 't']);
+      final long = 'x' * 100;
+      expect(await run(['set', '1', '-m', 'first\n$long']), 0);
+      expect(out.single, 'ok 1 updated +note="first ${'x' * 34}"');
+      expect(out.single.contains('\n'), isFalse);
+      // the stored note itself is untouched
+      await run(['show', '1']);
+      expect(out.join('\n'), contains('first'));
+      expect(out.join('\n'), contains('x' * 100));
+    });
+
+    test('round with control characters still prints a one-line receipt',
+        () async {
+      await run(['init']);
+      expect(await run(['add', 't', '--round', 'R\n9']), 0);
+      expect(out.single, contains('round=R 9'));
+      expect(out.single.contains('\n'), isFalse);
+    });
+
+    test('deps dedupe and blank segments are dropped', () async {
+      await seed([
+        ['init'],
+        ['add', 'a'],
+        ['add', 'b', '--deps', ' 1 , 1 , , '],
+      ]);
+      await run(['show', '2']);
+      expect(out.join('\n'), contains('deps: 1 (todo)'));
+    });
+
+    test('ghost dep ids are flattened in the ready warning', () async {
+      await run(['init']);
+      await run(['add', 't', '--deps', 'gh\nost']);
+      expect(await run(['ready']), 0);
+      expect(out.join('\n'),
+          contains('! unknown deps (treated as satisfied): gh ost'));
+    });
+
+    test('multiline note stores verbatim and shows aligned continuation',
+        () async {
+      await run(['init']);
+      await run(['add', 't']);
+      await run(['set', '1', 'wip', '-m', 'step one\nstep two']);
+      await run(['show', '1']);
+      final i = out.indexWhere((l) => l.contains('step one'));
+      expect(out[i], '    [10-06 12:00] step one');
+      // continuation aligns under the first character of the note text
+      final pad = ' ' * out[i].indexOf('step one');
+      expect(out[i + 1], '${pad}step two');
+    });
+
+    test('title search matches across line breaks', () async {
+      await run(['init']);
+      await run(['add', 'two\nwords']);
+      expect(await run(['list', 'two words']), 0);
+      expect(out.first, startsWith('1 '));
     });
   });
 }

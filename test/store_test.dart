@@ -82,6 +82,20 @@ void main() {
       expect((await s.add(title: 'next', now: now)).id, '2');
       await s.close();
     });
+
+    test('blank titles are rejected at the store level', () async {
+      final s = await create();
+      try {
+        await s.add(title: '   ', now: now);
+        fail('should throw');
+      } on GoalError catch (e) {
+        expect(e.code, GoalErrorCode.usage);
+        expect(e.message, contains('title cannot be empty'));
+      }
+      expect((await s.add(title: '\nline one\nline two\n', now: now)).title,
+          '\nline one\nline two\n');
+      await s.close();
+    });
   });
 
   group('resolve', () {

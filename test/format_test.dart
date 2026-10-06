@@ -1,5 +1,5 @@
 import 'package:goal/goal.dart';
-import 'package:goal/src/cli/format.dart' show cell, trunc;
+import 'package:goal/src/cli/format.dart' show cell, trunc, oneline, textLines;
 import 'package:test/test.dart';
 
 void main() {
@@ -47,6 +47,49 @@ void main() {
     test('cell pads to fixed width', () {
       expect(cell('ab', 4), 'ab  ');
       expect(cell('abcdef', 4), 'abcd');
+    });
+
+    test('truncation never splits a surrogate pair', () {
+      // 60 runes, 61 code units: a code-unit cut would break the emoji
+      final t = 'a' * 59 + '😀';
+      expect(trunc(t, 60), t);
+      expect(trunc('😀😀😀', 2), '😀😀');
+    });
+  });
+
+  group('oneline', () {
+    test('newlines, tabs and CR collapse to single spaces', () {
+      expect(oneline('a\nb'), 'a b');
+      expect(oneline('a\r\nb'), 'a b');
+      expect(oneline('a\rb'), 'a b');
+      expect(oneline('a\t\tb'), 'a b');
+      expect(oneline('a \n b'), 'a b');
+    });
+
+    test('ANSI escape sequences are removed', () {
+      expect(oneline('\x1B[31mred\x1B[0m'), 'red');
+      expect(oneline('a\x1B[2Kb'), 'a b');
+    });
+
+    test('other control characters become spaces', () {
+      expect(oneline('a\x00b'), 'a b');
+      expect(oneline('a\x07b'), 'a b');
+      expect(oneline('a\x7Fb'), 'a b');
+    });
+
+    test('clean text passes through unchanged', () {
+      expect(oneline('Fix Scroll Overflow'), 'Fix Scroll Overflow');
+      expect(oneline('修复滚动溢出'), '修复滚动溢出');
+    });
+  });
+
+  group('textLines', () {
+    test('splits on LF, CRLF and lone CR', () {
+      expect(textLines('a\nb'), ['a', 'b']);
+      expect(textLines('a\r\nb'), ['a', 'b']);
+      expect(textLines('a\rb'), ['a', 'b']);
+      expect(textLines('single'), ['single']);
+      expect(textLines(''), ['']);
     });
   });
 
@@ -211,6 +254,39 @@ void main() {
       expect(line.contains(' wip    '), isTrue);
       expect(line.contains('agent_9f3c'), isTrue);
       expect(line.endsWith('X' * 60), isTrue);
+    });
+
+    test('multiline and control characters cannot break the row', () {
+      final line = listLine(
+        GoalEntry(
+          id: '1',
+          status: GoalStatus.todo,
+          title: 'first\nsecond\tthird\x1B[31m',
+          agent: 'lane\none',
+          createdAt: now,
+          updatedAt: now,
+        ),
+        now,
+      );
+      expect(line.contains('\n'), isFalse);
+      expect(line.contains('\t'), isFalse);
+      expect(line.contains('\x1B'), isFalse);
+      expect(line, contains('first second third'));
+      expect(line, contains('lane one'));
+    });
+
+    test('a long emoji title truncates on a rune boundary', () {
+      final line = listLine(
+        GoalEntry(
+          id: '1',
+          status: GoalStatus.todo,
+          title: 'x' * 59 + '😀',
+          createdAt: now,
+          updatedAt: now,
+        ),
+        now,
+      );
+      expect(line.endsWith('😀'), isTrue);
     });
   });
 }

@@ -31,10 +31,10 @@ $ goal add "修复 iOS 登录崩溃" -p1 --round R12
 ok #1 created (todo) round=R12 修复 iOS 登录崩溃
 
 $ goal set 1 wip --agent agent_a
-ok 1 todo -> wip
+ok 1 todo -> wip +agent=agent_a
 
 $ goal set 1 done "改了 login.dart; flutter test 通过"
-ok 1 wip -> done +note
+ok 1 wip -> done +note="改了 login.dart; flutter test 通过"
 
 $ goal add "增加离线模式" -p2
 ok #2 created (todo) 增加离线模式
@@ -67,6 +67,11 @@ $ goal set 3 done "files: a.dart, b.dart; verify: dart test; evidence: docs/3.pn
 ```
 
 长备注可以从管道读入，绕开引号问题：`goal set 3 done -m -` 从 stdin 读取。
+
+多行和特殊字符随处可用：标题、正文、备注全部原样存储——`show` 就是原样
+视图——而回执、`list` 与 `render` 始终输出结构安全的单行内容。
+`goal add` 后面的裸词会自动拼成一个标题，忘加引号也能一次成功；回执会写明
+每个字段的新值（`+agent=… +deps=1,2 +note="…"`），无需再跑一次 `show` 核对。
 
 ## 依赖
 

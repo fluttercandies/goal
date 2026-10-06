@@ -12,3 +12,10 @@ Initial stable release.
 - Ready-set computation, dependency cycle detection, archive lifecycle.
 - `render` produces a human-readable markdown view or a JSON backup.
 - Library API (`package:goal/goal.dart`) alongside the `goal` executable.
+- One-shot friendly input: bare words join into one title, and receipts state
+  the new values (`+agent=…`, `+deps=…`, `+note="…"`) so no follow-up command
+  is needed to verify a change.
+- Multiline and control-character content is stored verbatim while receipts,
+  list rows and the markdown render stay single-line and structurally valid;
+  empty input (blank title, empty note, empty round) fails with a tutorial
+  message instead of being silently dropped.
