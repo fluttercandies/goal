@@ -651,4 +651,74 @@ void main() {
       expect(out.join('\n'), contains('  t'));
     });
   });
+
+  group('round-2 hardening', () {
+    test('-h works as the first argument, like --help', () async {
+      expect(await run(['-h']), 0);
+      expect(out.join('\n'), contains('goal set <id> [status]'));
+    });
+
+    test('#id form works everywhere renders display it', () async {
+      await run(['init']);
+      await run(['add', 'alpha']);
+      expect(await run(['set', '#1', 'wip']), 0);
+      expect(out.single, 'ok 1 todo -> wip');
+      expect(await run(['show', '#1']), 0);
+      expect(out.first, '#1 [wip]');
+      await run(['add', 'child', '--deps', '#1']);
+      expect(out.first, startsWith('ok #2 created'));
+      // no unknown-deps warning: the # was normalized away
+      expect(out, isNot(contains(contains('unknown deps'))));
+      await run(['set', '#1', 'done']);
+      expect(await run(['rm', '#2']), 0);
+      expect(out.single, 'ok rm #2 child');
+    });
+
+    test('junk positionals fail loudly instead of dropping silently', () async {
+      await run(['init']);
+      await run(['add', 'a']);
+      expect(await run(['ready', 'now']), 2);
+      expect(err.single, contains('goal ready takes no arguments'));
+      expect(await run(['show', '1', 'extra']), 2);
+      expect(err.single, contains('exactly one id'));
+      expect(await run(['render', 'junk']), 2);
+      expect(err.single, contains('goal render takes no arguments'));
+      expect(await run(['archive', 'junk']), 2);
+      expect(err.single, contains('goal archive takes no arguments'));
+      expect(await run(['init', 'again']), 2);
+      expect(err.single, contains('goal init takes no arguments'));
+    });
+
+    test('rm warns when other tickets still depend on the id', () async {
+      await run(['init']);
+      await run(['add', 'dep target']);
+      await run(['add', 'child', '--deps', '1']);
+      expect(await run(['rm', '1']), 0);
+      expect(
+          out.first,
+          '! removing #1: still referenced by #2 (their dep is now treated '
+          'as satisfied)');
+      expect(out.last, 'ok rm #1 dep target');
+      // the dependent is ready now, with the standard missing-deps note
+      await run(['ready']);
+      expect(out.join('\n'), contains('unknown deps'));
+    });
+
+    test('render lists not-yet-archived done tickets in an index table',
+        () async {
+      await run(['init']);
+      await run(['add', 'finished', '-p2']);
+      await run(['set', '1', 'done', '-m', 'verify: dart test']);
+      expect(await run(['render']), 0);
+      final text = out.join('\n');
+      expect(text, contains('## ✅ done (1)'));
+      // empty round renders as an empty table cell
+      expect(
+          text, contains('| #1 | P2 |  | finished | 0s | verify: dart test |'));
+      // once archived, the done section empties again
+      await run(['archive']);
+      expect(await run(['render']), 0);
+      expect(out.join('\n'), isNot(contains('## ✅ done')));
+    });
+  });
 }

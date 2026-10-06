@@ -50,7 +50,7 @@ $ goal ready
 | --- | --- |
 | `goal init` | 在 `./.goal` 建账（每个项目一次） |
 | `goal add <标题>` | 新增票据；旗标：`-p0..-p3` `--deps a,b` `--round R` `-m <正文>` |
-| `goal set <id> [状态] [备注...]` | 更新票据——改状态、加备注、设 `--agent`、`--deps`、`--round`、`-pN`，或用 `--title`/`--detail` 纠正标题与正文（`-` 从 stdin 读入，同 `-m`）。不带参数 = 心跳。 |
+| `goal set <id> [状态] [备注...]` | 更新票据——改状态、加备注、设 `--agent`、`--deps`、`--round`、`-pN`，或用 `--title`/`--detail` 纠正标题与正文（`-` 从 stdin 读入，同 `-m`）。不带参数 = 心跳。id 带 `#` 前缀也认。 |
 | `goal list [过滤词]` | 列出票据。裸词过滤：状态、轮次、优先级、`#id` 或标题文字，可自由组合（`goal list wip R12`）。同样支持旗标形式：`-pN` `--round <R>` `--id <id>` |
 | `goal ready` | 依赖全部完成的 todo，按优先级排序 |
 | `goal show <id>` | 查看单张票据的全部信息——归档票据也能查，带 `[archived]` 标记 |

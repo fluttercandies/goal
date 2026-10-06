@@ -5,6 +5,13 @@ library;
 import '../models/goal_entry.dart';
 import '../models/goal_status.dart';
 
+/// Renders strip the `#` when displaying ids as `#123`; every input path
+/// (set/show/rm ids, `--deps`, `--id`) accepts it back through here.
+String bareId(String s) {
+  final t = s.trim();
+  return t.startsWith('#') ? t.substring(1) : t;
+}
+
 String age(DateTime at, DateTime now) {
   var d = now.difference(at);
   if (d.isNegative) d = Duration.zero;

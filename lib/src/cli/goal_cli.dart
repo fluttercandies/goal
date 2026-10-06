@@ -83,7 +83,7 @@ ParsedArgs parseArgs(List<String> args) {
 
 List<String> splitIds(String raw) => raw
     .split(',')
-    .map((s) => s.trim())
+    .map(bareId)
     .where((s) => s.isNotEmpty)
     .toSet() // first occurrence wins; '2,2' must not show dep 2 twice
     .toList();
@@ -189,7 +189,10 @@ Future<int> _dispatch(
   DateTime now,
   Future<String> Function() readStdin,
 ) async {
-  if (args.isEmpty || args.first == 'help' || args.first == '--help') {
+  if (args.isEmpty ||
+      args.first == 'help' ||
+      args.first == '--help' ||
+      args.first == '-h') {
     _help(out);
     return 0;
   }
@@ -202,6 +205,20 @@ Future<int> _dispatch(
   final parsed = parseArgs(args.sublist(1));
   final allowed = _commandFlags[cmd];
   if (allowed != null) _checkFlags(cmd, parsed, allowed);
+  // Junk positionals must fail loudly, never drop silently — `goal ready now`
+  // succeeding would hide that "now" meant nothing.
+  switch (cmd) {
+    case 'init' || 'ready' || 'render' || 'archive':
+      if (parsed.positional.isNotEmpty) {
+        throw GoalError("unexpected '${parsed.positional.first}'. "
+            'goal $cmd takes no arguments');
+      }
+    case 'show':
+      if (parsed.positional.length > 1) {
+        throw GoalError("unexpected '${parsed.positional[1]}'. "
+            'goal show takes exactly one id');
+      }
+  }
   switch (cmd) {
     case 'init':
       return _init(home, out, err);
@@ -667,17 +684,18 @@ String _markdown(GoalStore store, DateTime now) {
     }
   }
 
-  // Parked is a carry pile, not activity: an aligned index table keeps it
-  // scannable; the last note (usually the revisit condition) is summarized.
-  final parked = store.all.where((e) => e.status == GoalStatus.parked).toList()
-    ..sort(_byPriorityThenAge);
-  if (parked.isNotEmpty) {
-    buf.writeln('\n## ${GoalStatus.parked.emoji} '
-        '${GoalStatus.parked.name} (${parked.length})');
+  // Parked and not-yet-archived done are index piles, not activity: aligned
+  // tables keep them scannable; the last note (revisit condition, settlement)
+  // is summarized. Done tickets otherwise existed only as a dashboard number.
+  for (final s in [GoalStatus.parked, GoalStatus.done]) {
+    final list = store.all.where((e) => e.status == s).toList()
+      ..sort(_byPriorityThenAge);
+    if (list.isEmpty) continue;
+    buf.writeln('\n## ${s.emoji} ${s.name} (${list.length})');
     buf.writeln();
     buf.writeln('| id | pri | round | title | age | last note |');
     buf.writeln('| --: | :-: | :-: | -- | --: | -- |');
-    for (final e in parked) {
+    for (final e in list) {
       final last = e.notes.isEmpty ? '' : trunc(oneline(e.notes.last.text), 60);
       buf.writeln('| #${_mdCell(oneline(e.id))} | ${e.priority ?? '-'}'
           ' | ${_mdCell(oneline(e.round))} | ${_mdCell(oneline(e.title))}'
@@ -722,7 +740,18 @@ Future<int> _rm(
     throw GoalError("unexpected '${p.positional[1]}'. remove one ticket at "
         'a time: goal rm <id>');
   }
-  final entry = await store.remove(p.positional.first);
+  final entry = store.resolve(p.positional.first);
+  // Deleting a dependency silently unblocks its dependents (unknown deps are
+  // satisfied by design) — surface the consequence now, not at the next ready.
+  final dependents = store.all
+      .where((e) => e.id != entry.id && e.deps.contains(entry.id))
+      .map((e) => '#${e.id}')
+      .toList();
+  if (dependents.isNotEmpty) {
+    out('! removing #${entry.id}: still referenced by ${dependents.join(' ')} '
+        '(their dep is now treated as satisfied)');
+  }
+  await store.remove(entry.id);
   out('ok rm #${entry.id} ${oneline(entry.title)}');
   return 0;
 }

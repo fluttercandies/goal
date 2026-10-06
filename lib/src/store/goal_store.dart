@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:hive_ce/hive_ce.dart';
 
 import '../../hive_registrar.g.dart';
+import '../cli/format.dart' show bareId;
 import '../models/goal_entry.dart';
 import '../models/goal_meta.dart';
 import '../models/goal_priority.dart';
@@ -135,12 +136,13 @@ class GoalStore {
 
   bool isArchived(String id) => archive.containsKey(id);
 
-  /// Resolves a ticket by its exact id. Misses are hard errors that list
-  /// recent ids so the caller can self-correct.
+  /// Resolves a ticket by its exact id (`#123` accepted, matching how
+  /// renders display ids). Misses are hard errors that list recent ids so
+  /// the caller can self-correct.
   GoalEntry resolve(String input) {
-    final exact = goals.get(input);
+    final exact = goals.get(bareId(input));
     if (exact != null) return exact;
-    if (archive.containsKey(input)) {
+    if (archive.containsKey(bareId(input))) {
       throw GoalError(
         "'$input' is archived. archived tickets are read-only",
         code: GoalErrorCode.notFound,
@@ -158,9 +160,10 @@ class GoalStore {
   /// read-only views; archived entries carry [ArchivedRef.archived] so the
   /// caller can label them.
   ArchivedRef resolveAny(String input) {
-    final active = goals.get(input);
+    final id = bareId(input);
+    final active = goals.get(id);
     if (active != null) return (entry: active, archived: false);
-    final archived = archive.get(input);
+    final archived = archive.get(id);
     if (archived != null) return (entry: archived, archived: true);
     final nearest = all..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     throw GoalError(

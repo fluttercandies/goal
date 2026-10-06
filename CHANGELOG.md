@@ -24,6 +24,16 @@ All notable changes to this package are documented in this file.
 - An audit-journal write failure degrades to a warning on stderr: the hive
   ledger is authoritative, so a journal gap never fails (and never fakes a
   failure for) an operation whose data write already succeeded.
+- Ids accept the `#` prefix everywhere they appear (`goal set #12 done`,
+  `--deps #3,#4`), matching how renders and `list` display ids.
+- Junk positionals are rejected loudly (`goal ready now`, `goal show 1 extra`)
+  instead of being silently dropped.
+- `rm` warns immediately when other tickets still depend on the removed id —
+  their dependency becomes satisfied, and the consequence is surfaced at
+  removal time, not at the next `ready`.
+- `render` lists not-yet-archived done tickets in an index table (same shape
+  as parked); previously they existed only as a dashboard count.
+- `-h` works as the first argument, like `--help`.
 
 ## 1.0.1 - 2026-10-06
 
