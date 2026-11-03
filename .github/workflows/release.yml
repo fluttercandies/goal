@@ -1,0 +1,208 @@
+name: Native binaries
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-binaries-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Dart >=3.9 is needed for Linux arm32/riscv64 cross-compilation.
+  DART_VERSION: '3.13.7'
+
+jobs:
+  prepare:
+    name: Validate and resolve dependencies
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1
+        with:
+          sdk: ${{ env.DART_VERSION }}
+      - name: Validate release version
+        id: metadata
+        run: python tool/release.py metadata
+      - name: Test release tooling
+        run: python -m unittest discover -s tool -p 'test_*.py' -v
+      - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: dart analyze
+      - run: dart test
+      - name: Share the exact dependency resolution
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-lockfile
+          path: pubspec.lock
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runner: windows-2022
+            sdk_arch: x64
+            executable: goal.exe
+            compile_args: ''
+            smoke: true
+          - target: windows-arm64
+            runner: windows-11-arm
+            sdk_arch: arm64
+            executable: goal.exe
+            compile_args: ''
+            smoke: true
+          - target: macos-x64
+            runner: macos-15-intel
+            sdk_arch: x64
+            executable: goal
+            compile_args: ''
+            smoke: true
+          - target: macos-arm64
+            runner: macos-15
+            sdk_arch: arm64
+            executable: goal
+            compile_args: ''
+            smoke: true
+          - target: linux-x64
+            runner: ubuntu-22.04
+            sdk_arch: x64
+            executable: goal
+            compile_args: --target-os=linux --target-arch=x64
+            smoke: true
+          - target: linux-arm64
+            runner: ubuntu-22.04
+            sdk_arch: x64
+            executable: goal
+            compile_args: --target-os=linux --target-arch=arm64
+            smoke: false
+          - target: linux-arm32
+            runner: ubuntu-22.04
+            sdk_arch: x64
+            executable: goal
+            compile_args: --target-os=linux --target-arch=arm
+            smoke: false
+          - target: linux-riscv64
+            runner: ubuntu-22.04
+            sdk_arch: x64
+            executable: goal
+            compile_args: --target-os=linux --target-arch=riscv64
+            smoke: false
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1
+        with:
+          sdk: ${{ env.DART_VERSION }}
+          architecture: ${{ matrix.sdk_arch }}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-lockfile
+      - run: dart pub get --enforce-lockfile
+      - name: Test on native runners
+        if: matrix.smoke
+        run: dart test
+      - name: Compile standalone executable
+        shell: bash
+        run: |
+          mkdir -p build
+          dart compile exe bin/goal.dart ${{ matrix.compile_args }} -o build/${{ matrix.executable }}
+      - name: Exercise the native executable
+        if: matrix.smoke
+        run: python tool/release.py smoke build/${{ matrix.executable }}
+      - name: Package and checksum
+        run: python tool/release.py package ${{ matrix.target }} --sdk ${{ env.DART_VERSION }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: goal-${{ matrix.target }}
+          path: build/release/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  smoke-linux-arm64:
+    name: Run cross-compiled Linux arm64 binary
+    needs: build
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: goal-linux-arm64
+          path: build/download
+      - name: Verify and run the packaged executable without a Dart SDK
+        shell: bash
+        run: |
+          cd build/download
+          sha256sum --check ./*.sha256
+          mkdir ../smoke
+          tar -xzf ./*.tar.gz -C ../smoke
+          cd ../..
+          python tool/release.py smoke build/smoke/goal
+
+  publish:
+    name: Publish tag release assets
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, build, smoke-linux-arm64]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: goal-*
+          merge-multiple: true
+          path: build/release
+      - name: Verify all eight archives and create SHA256SUMS
+        run: python tool/release.py checksums build/release
+      - name: Upload assets before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        shell: bash
+        run: |
+          if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft'); then
+            if [[ "$draft" != true ]]; then
+              echo 'Release already published; refusing to replace its assets.' >&2
+              exit 1
+            fi
+          else
+            flags=()
+            if [[ "$PRERELEASE" == true ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes \
+              --title "$RELEASE_TAG" "${flags[@]}"
+          fi
+          gh release upload "$RELEASE_TAG" build/release/*.zip build/release/*.tar.gz \
+            build/release/SHA256SUMS --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE"

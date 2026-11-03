@@ -2,6 +2,7 @@
 build/
 .idea/
 pubspec.lock
+__pycache__/
 
 # local ledgers created by tests or dogfooding
 .goal/

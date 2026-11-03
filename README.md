@@ -16,6 +16,28 @@ the people who work with them.
 
 ## Install
 
+### Standalone binary
+
+Download the archive for your system from [GitHub Releases](https://github.com/fluttercandies/goal/releases).
+Extract it and put `goal` (or `goal.exe` on Windows) on your `PATH`; a Dart SDK
+is not needed to run these binaries.
+
+| System | Architectures | Archive |
+| --- | --- | --- |
+| Windows | x64, arm64 | `.zip` |
+| macOS | x64 (Intel), arm64 (Apple Silicon) | `.tar.gz` |
+| Linux (glibc) | x64, arm64, arm32, riscv64 | `.tar.gz` |
+
+Asset names include the version and target, for example
+`goal-1.1.0-linux-x64.tar.gz`. Verify the download against the release's
+`SHA256SUMS` before using it. Linux builds target glibc systems, not Alpine's
+musl libc. The macOS and Windows binaries are not signed or notarized.
+32-bit Windows/x86 is not supported by Dart's native AOT compiler.
+
+See [release builds](doc/releases.md) for verification coverage and maintainer instructions.
+
+### From pub.dev
+
 ```bash
 dart pub global activate goal
 ```
