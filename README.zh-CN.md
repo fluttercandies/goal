@@ -15,6 +15,27 @@
 
 ## 安装
 
+### 独立可执行文件
+
+从 [GitHub Releases](https://github.com/fluttercandies/goal/releases) 下载适合系统的压缩包，
+解压后将 `goal`（Windows 为 `goal.exe`）所在目录加入 `PATH`，无需安装 Dart SDK。
+
+| 系统 | 架构 | 压缩格式 |
+| --- | --- | --- |
+| Windows | x64、arm64 | `.zip` |
+| macOS | x64（Intel）、arm64（Apple Silicon） | `.tar.gz` |
+| Linux（glibc） | x64、arm64、arm32、riscv64 | `.tar.gz` |
+
+文件名包含版本和平台，例如 `goal-1.1.0-linux-x64.tar.gz`。
+使用前请与同一 Release 的 `SHA256SUMS` 核对校验和。
+Linux 构建面向 glibc 系统，不适用于使用 musl 的 Alpine。
+macOS 和 Windows 可执行文件未签名或公证。
+Dart 原生 AOT 编译器不支持 32 位 Windows/x86。
+
+构建验证范围及维护者发布步骤见[发布说明](doc/releases.md)。
+
+### 通过 pub.dev 安装
+
 ```bash
 dart pub global activate goal
 ```
